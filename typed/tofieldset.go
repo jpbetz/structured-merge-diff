@@ -91,8 +91,9 @@ func (v *tosetObjectWalker) doScalar(t *schema.Scalar) ValidationErrors {
 	return nil
 }
 
-func (v *tosetObjectWalker) visitListItems(t *schema.List, list []interface{}) (errs ValidationErrors) {
-	for i, child := range list {
+func (v *tosetObjectWalker) visitListItems(t *schema.List, list value.List) (errs ValidationErrors) {
+	for i := 0; i < list.Length(); i++ {
+		child := list.At(i)
 		pe, _ := listItemToPathElement(t, i, child)
 		v2 := v.prepareDescent(pe, t.ElementType)
 		v2.value = child
