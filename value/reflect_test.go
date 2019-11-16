@@ -23,7 +23,7 @@ import (
 
 func TestReflectPrimitives(t *testing.T) {
 
-	rv := ReflectValue{"string"}
+	rv := Reflect("string")
 	if !rv.IsString() {
 		t.Error("expected IsString to be true")
 	}
@@ -31,7 +31,7 @@ func TestReflectPrimitives(t *testing.T) {
 		t.Errorf("expected rv.String to be 'string' but got %s", rv.String())
 	}
 
-	rv = ReflectValue{1}
+	rv = Reflect(1)
 	if !rv.IsInt() {
 		t.Error("expected IsInt to be true")
 	}
@@ -42,7 +42,7 @@ func TestReflectPrimitives(t *testing.T) {
 
 func TestReflectPointers(t *testing.T) {
 	s := "string"
-	rv := ReflectValue{&s}
+	rv := Reflect(&s)
 	if !rv.IsString() {
 		t.Error("expected IsString to be true")
 	}
@@ -72,7 +72,7 @@ func TestReflectStruct(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rv := ReflectValue{tc.val}
+			rv := Reflect(tc.val)
 			if !rv.IsMap() {
 				t.Error("expected IsMap to be true")
 			}
@@ -117,7 +117,7 @@ func TestReflectMap(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rv := ReflectValue{tc.val}
+			rv := Reflect(tc.val)
 			if !rv.IsMap() {
 				t.Error("expected IsMap to be true")
 			}
@@ -161,7 +161,7 @@ func TestReflectList(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rv := ReflectValue{tc.val}
+			rv := Reflect(tc.val)
 			if !rv.IsList() {
 				t.Error("expected IsList to be true")
 			}
