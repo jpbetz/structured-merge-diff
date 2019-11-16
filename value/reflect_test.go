@@ -60,13 +60,13 @@ func TestReflectStruct(t *testing.T) {
 	} {
 		{
 			name: "struct",
-			val: struct{I int64; S string} {I: 10, S: "string"},
-			expectedMap: map[string]interface{}{"I": int64(10), "S": "string"},
+			val: struct{I int64 `json:"int"`; S string} {I: 10, S: "string"},
+			expectedMap: map[string]interface{}{"int": int64(10), "S": "string"},
 		},
 		{
 			name: "structPtr",
-			val: &struct{I int64; S string} {I: 10, S: "string"},
-			expectedMap: map[string]interface{}{"I": int64(10), "S": "string"},
+			val: &struct{I int64 `json:"int"`; S string} {I: 10, S: "string"},
+			expectedMap: map[string]interface{}{"int": int64(10), "S": "string"},
 		},
 	}
 
@@ -77,14 +77,14 @@ func TestReflectStruct(t *testing.T) {
 				t.Error("expected IsMap to be true")
 			}
 			m := rv.Map()
-			if i, ok := m.Get("I"); ok {
+			if i, ok := m.Get("int"); ok {
 				if !i.IsInt() {
 					t.Errorf("expected I to be an int, but got: %T", i.Interface())
 				} else if i.Int() != 10 {
 					t.Errorf("expected I to be 10 but got: %v", i)
 				}
 			} else {
-				t.Error("expected I to be in map")
+				t.Error("expected 'int' to be in map")
 			}
 			if m.Length() != len(tc.expectedMap) {
 				t.Errorf("expected map to be of length %d but got %d", len(tc.expectedMap), m.Length())

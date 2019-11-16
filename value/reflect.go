@@ -18,6 +18,8 @@ package value
 
 import (
 	"reflect"
+	"strings"
+	"sync"
 )
 
 func Reflect(value interface{}) Value {
@@ -55,7 +57,7 @@ func (r reflectValue) Map() Map {
 	rval := deref(r.Value)
 	switch rval.Kind() {
 	case reflect.Struct:
-		return reflectStruct{r.Value}
+		return reflectStruct{Value: r.Value}
 	case reflect.Map:
 		return reflectMap{r.Value}
 	default:
@@ -76,6 +78,7 @@ func (r reflectValue) Bool() bool {
 	panic("value is not a bool")
 }
 func (r reflectValue) Int() int64 {
+	// TODO: What about reflect.Value.Uint?
 	if r.IsInt() {
 		return deref(r.Value).Int()
 	}
@@ -135,6 +138,23 @@ func (r reflectMap) Iterate(fn func(string, Value) bool) {
 
 type reflectStruct struct {
 	Value interface{}
+	// TODO: is creating this lookup table worth the allocation?
+	sync.Once
+	fieldByJsonName map[string]reflect.StructField
+}
+
+func (r reflectStruct) findJsonNameField(jsonName string) (reflect.Value, bool) {
+	rval := deref(r.Value)
+	r.Once.Do(func() {
+		t := rval.Type()
+		r.fieldByJsonName = make(map[string]reflect.StructField, rval.NumField())
+		for i := 0; i < t.NumField(); i++ {
+			field := t.Field(i)
+			r.fieldByJsonName[lookupJsonName(field)] = t.Field(i)
+		}
+	})
+	field, ok := r.fieldByJsonName[jsonName]
+	return rval.FieldByIndex(field.Index), ok
 }
 
 func (r reflectStruct) Length() int {
@@ -143,26 +163,31 @@ func (r reflectStruct) Length() int {
 }
 
 func (r reflectStruct) Get(key string) (Value, bool) {
-	var val reflect.Value
-	rval := deref(r.Value)
-	val = rval.FieldByName(key)
-	return reflectValue{val.Interface()}, val != zero
+	if val, ok := r.findJsonNameField(key); ok {
+		return reflectValue{val.Interface()}, true
+	}
+	// TODO: decide how to handle invalid keys
+	return reflectValue{}, false
 }
 
 func (r reflectStruct) Set(key string, val Value) {
-	rval := deref(r.Value)
-	rval.FieldByName(key).Set(rval)
+	if val, ok := r.findJsonNameField(key); ok {
+		val.Set(val)
+	}
+	// TODO: decide how to handle invalid keys
 }
 
 func (r reflectStruct) Delete(key string) {
-	rval := deref(r.Value)
-	rval.FieldByName(key).Set(reflect.Value{})
+	if val, ok := r.findJsonNameField(key); ok {
+		val.Set(reflect.Value{})
+	}
+	// TODO: decide how to handle invalid keys
 }
 
 func (r reflectStruct) Iterate(fn func(string, Value) bool) {
 	rval := deref(r.Value)
 	for i := 0; i < rval.NumField(); i++ {
-		fn(rval.Type().Field(i).Name, reflectValue{rval.Field(i).Interface()})
+		fn(lookupJsonName(rval.Type().Field(i)), reflectValue{rval.Field(i).Interface()})
 	}
 }
 
@@ -217,4 +242,14 @@ func deref(val interface{}) reflect.Value {
 		return rval.Elem()
 	}
 	return rval
+}
+
+func lookupJsonName(f reflect.StructField) string {
+	if json, ok := f.Tag.Lookup("json"); ok {
+		parts := strings.Split(json, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	return f.Name
 }
