@@ -108,6 +108,12 @@ func (p ParseableType) FromUnstructured(in interface{}) (*TypedValue, error) {
 	return AsTyped(value.ValueInterface{Value: in}, p.Schema, p.TypeRef)
 }
 
+// FromInterface converts a go interface to a TypedValue. It will return an
+// error if the resulting object fails schema validation.
+func (p ParseableType) FromInterface(in interface{}) (*TypedValue, error) {
+	return AsTyped(value.ReflectValue{Value: in}, p.Schema, p.TypeRef)
+}
+
 // DeducedParseableType is a ParseableType that deduces the type from
 // the content of the object.
 var DeducedParseableType ParseableType = createOrDie(YAMLObject(`types:

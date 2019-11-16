@@ -29,8 +29,9 @@ var (
 	_NS  = fieldpath.NewSet
 	_P   = fieldpath.MakePathOrDie
 	_KBF = fieldpath.KeyByFields
-	_V   = func(v value.Value) *value.Value {
-		return &v
+	_V   = func(v interface{}) *value.Value {
+		var vi value.Value = value.ValueInterface{Value: v}
+		return &vi
 	}
 )
 
