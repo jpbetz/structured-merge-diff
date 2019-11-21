@@ -155,10 +155,8 @@ func (v *validatingObjectWalker) doList(t *schema.List) (errs ValidationErrors) 
 	return errs
 }
 
-func (v *validatingObjectWalker) visitMapItems(t *schema.Map, m map[string]interface{}) (errs ValidationErrors) {
-	// Avoiding the closure on m.Iterate here significantly improves
-	// performance, so we have to switch on each type of maps.
-	for key, val := range m {
+func (v *validatingObjectWalker) visitMapItems(t *schema.Map, m value.Map) (errs ValidationErrors) {
+	m.Iterate(func(key string, val value.Value) bool {
 		tr := t.ElementType
 		if sf, ok := t.FindField(key); ok {
 			tr = sf.Type
@@ -167,7 +165,8 @@ func (v *validatingObjectWalker) visitMapItems(t *schema.Map, m map[string]inter
 		v2.value = val
 		errs = append(errs, v2.validate()...)
 		v.finishDescent(v2)
-	}
+		return true
+	})
 	return errs
 }
 
