@@ -324,6 +324,9 @@ func (w *mergingWalker) visitMapItems(t *schema.Map, lhs, rhs value.Map) (errs V
 				}
 			}
 			errs = append(errs, w.visitMapItem(t, out, key, &val, rval)...)
+			if rval != nil {
+				(*rval).Recycle()
+			}
 			return true
 		})
 	}
@@ -331,7 +334,8 @@ func (w *mergingWalker) visitMapItems(t *schema.Map, lhs, rhs value.Map) (errs V
 	if rhs != nil {
 		rhs.Iterate(func(key string, val value.Value) bool {
 			if lhs != nil {
-				if _, ok := lhs.Get(key); ok {
+				if v, ok := lhs.Get(key); ok {
+					v.Recycle()
 					return true
 				}
 			}
