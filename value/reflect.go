@@ -64,6 +64,9 @@ func (r reflectValue) Map() Map {
 		panic("value is not a map or struct")
 	}
 }
+func (r reflectValue) Recycle() {
+
+}
 
 func (r reflectValue) List() List {
 	if r.IsList() {
@@ -126,14 +129,22 @@ func (r reflectMap) Delete(key string) {
 	rval.SetMapIndex(reflect.ValueOf(key), reflect.Value{})
 }
 
-func (r reflectMap) Iterate(fn func(string, Value) bool) {
+func (r reflectMap) Iterate(fn func(string, Value) bool) bool {
 	rval := deref(r.Value)
 	iter := rval.MapRange()
 	for iter.Next() {
 		if !fn(iter.Key().String(), reflectValue{iter.Value().Interface()}) {
-			return
+			return false
 		}
 	}
+	return true
+}
+func (r reflectMap) Equals(m Map) bool {
+	// TODO use reflect.DeepEqual
+	return MapCompare(r, m) == 0
+}
+func (r reflectMap) Recycle() {
+	
 }
 
 type reflectStruct struct {
@@ -184,37 +195,28 @@ func (r reflectStruct) Delete(key string) {
 	// TODO: decide how to handle invalid keys
 }
 
-func (r reflectStruct) Iterate(fn func(string, Value) bool) {
+func (r reflectStruct) Iterate(fn func(string, Value) bool) bool {
 	rval := deref(r.Value)
 	for i := 0; i < rval.NumField(); i++ {
-		fn(lookupJsonName(rval.Type().Field(i)), reflectValue{rval.Field(i).Interface()})
+		if !fn(lookupJsonName(rval.Type().Field(i)), reflectValue{rval.Field(i).Interface()}) {
+			return false
+		}
 	}
+	return true
+}
+
+func (r reflectStruct) Equals(m Map) bool {
+	// TODO use reflect.DeepEqual
+	return MapCompare(r, m) == 0
 }
 
 type ReflectList struct {
 	Value interface{}
 }
 
-// TODO: This function should not be part of the value.List interface
-func (r ReflectList) Interface() []interface{} {
-	result := make([]interface{}, r.Length(), r.Length())
-	r.Iterate(func(i int, value Value) {
-		result[i] = value.Interface()
-	})
-	return result
-}
-
 func (r ReflectList) Length() int {
 	rval := deref(r.Value)
 	return rval.Len()
-}
-
-func (r ReflectList) Iterate(fn func(int, Value)) {
-	rval := deref(r.Value)
-	length := rval.Len()
-	for i := 0; i < length; i++ {
-		fn(i, reflectValue{rval.Index(i).Interface()})
-	}
 }
 
 func (r ReflectList) At(i int) Value {

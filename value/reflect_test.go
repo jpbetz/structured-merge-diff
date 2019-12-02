@@ -175,13 +175,6 @@ func TestReflectList(t *testing.T) {
 			if m.Length() != tc.length {
 				t.Errorf("expected list to be of length %d but got %d", tc.length, m.Length())
 			}
-			iterateResult := make([]string, m.Length())
-			m.Iterate(func(i int, v Value) {
-				iterateResult[i] = v.String()
-			})
-			if !reflect.DeepEqual(iterateResult, tc.val) {
-				t.Errorf("expected iterate to produce %#v but got %#v", tc.val, iterateResult)
-			}
 		})
 	}
 }
