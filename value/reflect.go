@@ -51,7 +51,16 @@ func (r reflectValue) IsString() bool {
 	return isKind(r.Value, reflect.String)
 }
 func (r reflectValue) IsNull() bool {
-	return reflect.ValueOf(r.Value).IsNil()
+	return safeIsNil(reflect.ValueOf(r.Value))
+}
+// TODO find a cleaner way to avoid panics from reflect.IsNil()
+func safeIsNil(v reflect.Value) bool {
+	k := v.Kind()
+	switch k {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Ptr, reflect.UnsafePointer, reflect.Interface, reflect.Slice:
+		return v.IsNil()
+	}
+	return false
 }
 func (r reflectValue) Map() Map {
 	rval := deref(r.Value)
@@ -65,7 +74,7 @@ func (r reflectValue) Map() Map {
 	}
 }
 func (r reflectValue) Recycle() {
-
+	// TODO implement this
 }
 
 func (r reflectValue) List() List {
@@ -144,7 +153,7 @@ func (r reflectMap) Equals(m Map) bool {
 	return MapCompare(r, m) == 0
 }
 func (r reflectMap) Recycle() {
-	
+	// TODO implement this
 }
 
 type reflectStruct struct {
