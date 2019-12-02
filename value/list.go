@@ -16,24 +16,13 @@ limitations under the License.
 
 package value
 
+// List represents a list object.
 type List interface {
-	Interface() []interface{}
+	// Length returns how many items can be found in the map.
 	Length() int
+	// At returns the item at the given position in the map. It will
+	// panic if the index is out of range.
 	At(int) Value
-}
-
-type ListInterface []interface{}
-
-func (l ListInterface) Interface() []interface{} {
-	return l
-}
-
-func (l ListInterface) Length() int {
-	return len(l)
-}
-
-func (l ListInterface) At(i int) Value {
-	return NewValueInterface(l[i])
 }
 
 // Equals compares two lists lexically.
