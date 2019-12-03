@@ -48,18 +48,18 @@ func isCustomConvertable(rv reflect.Value) bool{
 	return reflect.PtrTo(rv.Type()).Implements(unmarshalerType)
 }
 func customConvert(rv reflect.Value) (Value, error) {
+	// TODO: find cleaner way to apply custom conversion
 	data, err := json.Marshal(rv.Interface())
 	if err != nil {
 		return nil, fmt.Errorf("error encoding %v to json: %v", rv, err)
 	}
-	result := map[string]interface{}{}
-	// TODO: find cleaner way to apply custom conversion
-	wrapped := fmt.Sprintf("{\"value\": %s}", data)
-	err = json.Unmarshal([]byte(wrapped), &result)
+	wrappedResult := struct{Value interface{}}{}
+	wrappedData := fmt.Sprintf("{\"Value\": %s}", data)
+	err = json.Unmarshal([]byte(wrappedData), &wrappedResult)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding %v from json: %v", data, err)
 	}
-	return  NewValueInterface(result["value"]), nil
+	return  NewValueInterface(wrappedResult.Value), nil
 }
 
 type reflectValue struct {
@@ -213,12 +213,13 @@ func (r reflectStruct) accumulateFields(fields map[string]reflect.Value, rval re
 	t := rval.Type()
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
+		fieldVal := rval.FieldByIndex(field.Index)
 		if isInline(field) {
 			r.accumulateFields(fields, rval.FieldByIndex(field.Index))
-		} else if isOmitempty(field) && safeIsNil(rval.FieldByIndex(field.Index)) {
+		} else if isOmitempty(field) && (safeIsNil(fieldVal) || isEmptyValue(fieldVal)) {
 			// skip it
 		} else {
-			r.fieldByJsonName[lookupJsonName(field)] = rval.FieldByIndex(field.Index)
+			r.fieldByJsonName[lookupJsonName(field)] = fieldVal
 		}
 	}
 }
@@ -261,11 +262,12 @@ func (r reflectStruct) Iterate(fn func(string, Value) bool) bool {
 func (r reflectStruct) iterate(rval reflect.Value, fn func(string, Value) bool) bool {
 	for i := 0; i < rval.NumField(); i++ {
 		field := rval.Type().Field(i)
+		fieldVal := rval.FieldByIndex(field.Index)
 		if isInline(field) {
-			if ok := r.iterate(rval.FieldByIndex(field.Index), fn); !ok {
+			if ok := r.iterate(fieldVal, fn); !ok {
 				return false
 			}
-		} else if isOmitempty(field) && safeIsNil(rval.FieldByIndex(field.Index)) {
+		} else if isOmitempty(field) && (safeIsNil(fieldVal) || isEmptyValue(fieldVal)) {
 			// skip it
 		} else if !fn(lookupJsonName(field), MustReflect(rval.Field(i).Interface())) {
 			return false
@@ -343,6 +345,25 @@ func hasTag(f reflect.StructField, tag string) bool {
 				}
 			}
 		}
+	}
+	return false
+}
+
+// Copied from https://golang.org/src/encoding/json/encode.go
+func isEmptyValue(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
+		return v.Len() == 0
+	case reflect.Bool:
+		return !v.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int() == 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return v.Uint() == 0
+	case reflect.Float32, reflect.Float64:
+		return v.Float() == 0
+	case reflect.Interface, reflect.Ptr:
+		return v.IsNil()
 	}
 	return false
 }

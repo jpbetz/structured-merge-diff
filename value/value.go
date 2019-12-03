@@ -209,7 +209,7 @@ func ToString(v Value) string {
 			strs = append(strs, fmt.Sprintf("%v=%v", k, ToString(v)))
 			return true
 		})
-		return strings.Join(strs, "")
+		return "{" + strings.Join(strs, ",") + "}"
 	}
 	// No field is set, on either objects.
 	return "{{undefined}}"
