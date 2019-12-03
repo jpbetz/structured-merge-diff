@@ -161,6 +161,9 @@ func (r reflectMap) Get(key string) (Value, bool) {
 	var val reflect.Value
 	rval := deref(r.Value)
 	val = rval.MapIndex(reflect.ValueOf(key))
+	if !val.IsValid() {
+		return nil, false
+	}
 	return MustReflect(val.Interface()), val != zero
 }
 
@@ -171,14 +174,18 @@ func (r reflectMap) Set(key string, val Value) {
 
 func (r reflectMap) Delete(key string) {
 	rval := deref(r.Value)
-	rval.SetMapIndex(reflect.ValueOf(key), reflect.Value{})
+	rval.SetMapIndex(reflect.ValueOf(key), zero)
 }
 
 func (r reflectMap) Iterate(fn func(string, Value) bool) bool {
 	rval := deref(r.Value)
 	iter := rval.MapRange()
 	for iter.Next() {
-		if !fn(iter.Key().String(), MustReflect(iter.Value().Interface())) {
+		next := iter.Value()
+		if !next.IsValid() {
+			continue
+		}
+		if !fn(iter.Key().String(), MustReflect(next.Interface())) {
 			return false
 		}
 	}
@@ -310,7 +317,7 @@ func isKind(val interface{}, kinds ...reflect.Kind) bool {
 
 func deref(val interface{}) reflect.Value {
 	rval := reflect.ValueOf(val)
-	kind := rval.Type().Kind()
+	kind := rval.Kind()
 	if kind == reflect.Interface || kind == reflect.Ptr {
 		return rval.Elem()
 	}

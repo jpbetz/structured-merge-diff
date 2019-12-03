@@ -90,12 +90,12 @@ func resolveSchema(s *schema.Schema, tr schema.TypeRef, v *value.Value, ah atomH
 	if !ok {
 		return errorf("schema error: no type found matching: %v", *tr.NamedType)
 	}
-
 	a = deduceAtom(a, v)
 	return handleAtom(a, tr, ah)
 }
 
 func deduceAtom(a schema.Atom, v *value.Value) schema.Atom {
+
 	switch {
 	case v == nil, *v == nil:
 	case (*v).IsFloat(), (*v).IsInt(), (*v).IsString(), (*v).IsBool():
