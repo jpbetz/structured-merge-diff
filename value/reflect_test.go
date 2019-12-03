@@ -19,11 +19,12 @@ package value
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestReflectPrimitives(t *testing.T) {
 
-	rv := Reflect("string")
+	rv := MustReflect("string")
 	if !rv.IsString() {
 		t.Error("expected IsString to be true")
 	}
@@ -31,7 +32,7 @@ func TestReflectPrimitives(t *testing.T) {
 		t.Errorf("expected rv.String to be 'string' but got %s", rv.String())
 	}
 
-	rv = Reflect(1)
+	rv = MustReflect(1)
 	if !rv.IsInt() {
 		t.Error("expected IsInt to be true")
 	}
@@ -40,15 +41,33 @@ func TestReflectPrimitives(t *testing.T) {
 	}
 }
 
+func TestReflectCustomConversion(t *testing.T) {
+	dateTime, err := time.Parse(time.RFC3339, "2006-01-02T15:04:05+07:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rv := MustReflect(dateTime)
+	if !rv.IsString() {
+		t.Error("expected IsString to be true")
+	}
+	if rv.String() != "2006-01-02T15:04:05+07:00" {
+		t.Errorf("expected rv.String to be %v but got %s", dateTime, rv.String())
+	}
+}
+
 func TestReflectPointers(t *testing.T) {
 	s := "string"
-	rv := Reflect(&s)
+	rv := MustReflect(&s)
 	if !rv.IsString() {
 		t.Error("expected IsString to be true")
 	}
 	if rv.String() != "string" {
 		t.Errorf("expected rv.String to be 'string' but got %s", rv.String())
 	}
+}
+
+type T struct {
+	I int64 `json:"int"`
 }
 
 // TODO: test Set, Delete
@@ -68,11 +87,21 @@ func TestReflectStruct(t *testing.T) {
 			val: &struct{I int64 `json:"int"`; S string} {I: 10, S: "string"},
 			expectedMap: map[string]interface{}{"int": int64(10), "S": "string"},
 		},
+		{
+			name: "inline",
+			val: &struct{Inline T `json:",inline"`; S string} {Inline: T{I: 10}, S: "string"},
+			expectedMap: map[string]interface{}{"int": int64(10), "S": "string"},
+		},
+		{
+			name: "omitempty",
+			val: struct{Noomit *string `json:"noomit"`; Omit *string `json:"omit,omitempty"`} {Noomit: nil, Omit: nil},
+			expectedMap: map[string]interface{}{"noomit": (*string)(nil)},
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rv := Reflect(tc.val)
+			rv := MustReflect(tc.val)
 			if !rv.IsMap() {
 				t.Error("expected IsMap to be true")
 			}
@@ -83,8 +112,6 @@ func TestReflectStruct(t *testing.T) {
 				} else if i.Int() != 10 {
 					t.Errorf("expected I to be 10 but got: %v", i)
 				}
-			} else {
-				t.Error("expected 'int' to be in map")
 			}
 			if m.Length() != len(tc.expectedMap) {
 				t.Errorf("expected map to be of length %d but got %d", len(tc.expectedMap), m.Length())
@@ -117,7 +144,7 @@ func TestReflectMap(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rv := Reflect(tc.val)
+			rv := MustReflect(tc.val)
 			if !rv.IsMap() {
 				t.Error("expected IsMap to be true")
 			}
@@ -161,7 +188,7 @@ func TestReflectList(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rv := Reflect(tc.val)
+			rv := MustReflect(tc.val)
 			if !rv.IsList() {
 				t.Error("expected IsList to be true")
 			}

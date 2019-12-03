@@ -111,7 +111,7 @@ func (p ParseableType) FromUnstructured(in interface{}) (*TypedValue, error) {
 // FromInterface converts a go interface to a TypedValue. It will return an
 // error if the resulting object fails schema validation.
 func (p ParseableType) FromInterface(in interface{}) (*TypedValue, error) {
-	return AsTyped(value.Reflect(in), p.Schema, p.TypeRef)
+	return AsTyped(value.MustReflect(in), p.Schema, p.TypeRef)
 }
 
 // DeducedParseableType is a ParseableType that deduces the type from

@@ -17,13 +17,49 @@ limitations under the License.
 package value
 
 import (
+	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
 )
 
-func Reflect(value interface{}) Value {
-	return reflectValue{Value: value}
+var unmarshalerType = reflect.TypeOf(new(json.Unmarshaler)).Elem()
+
+func Reflect(value interface{}) (Value, error) {
+	if value != nil {
+		rv := reflect.ValueOf(value)
+		if isCustomConvertable(rv) {
+			return customConvert(rv)
+		}
+	}
+	return reflectValue{value}, nil
+}
+
+func MustReflect(value interface{}) Value {
+	v, err := Reflect(value)
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+func isCustomConvertable(rv reflect.Value) bool{
+	return reflect.PtrTo(rv.Type()).Implements(unmarshalerType)
+}
+func customConvert(rv reflect.Value) (Value, error) {
+	data, err := json.Marshal(rv.Interface())
+	if err != nil {
+		return nil, fmt.Errorf("error encoding %v to json: %v", rv, err)
+	}
+	result := map[string]interface{}{}
+	// TODO: find cleaner way to apply custom conversion
+	wrapped := fmt.Sprintf("{\"value\": %s}", data)
+	err = json.Unmarshal([]byte(wrapped), &result)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding %v from json: %v", data, err)
+	}
+	return  NewValueInterface(result["value"]), nil
 }
 
 type reflectValue struct {
@@ -125,7 +161,7 @@ func (r reflectMap) Get(key string) (Value, bool) {
 	var val reflect.Value
 	rval := deref(r.Value)
 	val = rval.MapIndex(reflect.ValueOf(key))
-	return reflectValue{val.Interface()}, val != zero
+	return MustReflect(val.Interface()), val != zero
 }
 
 func (r reflectMap) Set(key string, val Value) {
@@ -142,7 +178,7 @@ func (r reflectMap) Iterate(fn func(string, Value) bool) bool {
 	rval := deref(r.Value)
 	iter := rval.MapRange()
 	for iter.Next() {
-		if !fn(iter.Key().String(), reflectValue{iter.Value().Interface()}) {
+		if !fn(iter.Key().String(), MustReflect(iter.Value().Interface())) {
 			return false
 		}
 	}
@@ -160,34 +196,48 @@ type reflectStruct struct {
 	Value interface{}
 	// TODO: is creating this lookup table worth the allocation?
 	sync.Once
-	fieldByJsonName map[string]reflect.StructField
+	fieldByJsonName map[string]reflect.Value
 }
 
 func (r reflectStruct) findJsonNameField(jsonName string) (reflect.Value, bool) {
 	rval := deref(r.Value)
 	r.Once.Do(func() {
-		t := rval.Type()
-		r.fieldByJsonName = make(map[string]reflect.StructField, rval.NumField())
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
-			r.fieldByJsonName[lookupJsonName(field)] = t.Field(i)
-		}
+		r.fieldByJsonName = make(map[string]reflect.Value, rval.NumField())
+		r.accumulateFields(r.fieldByJsonName, rval)
 	})
 	field, ok := r.fieldByJsonName[jsonName]
-	return rval.FieldByIndex(field.Index), ok
+	return field, ok
+}
+
+func (r reflectStruct) accumulateFields(fields map[string]reflect.Value, rval reflect.Value) {
+	t := rval.Type()
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if isInline(field) {
+			r.accumulateFields(fields, rval.FieldByIndex(field.Index))
+		} else if isOmitempty(field) && safeIsNil(rval.FieldByIndex(field.Index)) {
+			// skip it
+		} else {
+			r.fieldByJsonName[lookupJsonName(field)] = rval.FieldByIndex(field.Index)
+		}
+	}
 }
 
 func (r reflectStruct) Length() int {
-	rval := deref(r.Value)
-	return rval.NumField()
+	i := 0
+	r.Iterate(func(s string, value Value) bool {
+		i++
+		return true
+	})
+	return i
 }
 
 func (r reflectStruct) Get(key string) (Value, bool) {
 	if val, ok := r.findJsonNameField(key); ok {
-		return reflectValue{val.Interface()}, true
+		return MustReflect(val.Interface()), true
 	}
 	// TODO: decide how to handle invalid keys
-	return reflectValue{}, false
+	return MustReflect(nil), false
 }
 
 func (r reflectStruct) Set(key string, val Value) {
@@ -205,9 +255,19 @@ func (r reflectStruct) Delete(key string) {
 }
 
 func (r reflectStruct) Iterate(fn func(string, Value) bool) bool {
-	rval := deref(r.Value)
+	return r.iterate(deref(r.Value), fn)
+}
+
+func (r reflectStruct) iterate(rval reflect.Value, fn func(string, Value) bool) bool {
 	for i := 0; i < rval.NumField(); i++ {
-		if !fn(lookupJsonName(rval.Type().Field(i)), reflectValue{rval.Field(i).Interface()}) {
+		field := rval.Type().Field(i)
+		if isInline(field) {
+			if ok := r.iterate(rval.FieldByIndex(field.Index), fn); !ok {
+				return false
+			}
+		} else if isOmitempty(field) && safeIsNil(rval.FieldByIndex(field.Index)) {
+			// skip it
+		} else if !fn(lookupJsonName(field), MustReflect(rval.Field(i).Interface())) {
 			return false
 		}
 	}
@@ -230,7 +290,7 @@ func (r ReflectList) Length() int {
 
 func (r ReflectList) At(i int) Value {
 	rval := deref(r.Value)
-	return reflectValue{rval.Index(i).Interface()}
+	return MustReflect(rval.Index(i).Interface())
 }
 
 var zero = reflect.Value{}
@@ -256,11 +316,33 @@ func deref(val interface{}) reflect.Value {
 }
 
 func lookupJsonName(f reflect.StructField) string {
-	if json, ok := f.Tag.Lookup("json"); ok {
-		parts := strings.Split(json, ",")
+	if jsonTag, ok := f.Tag.Lookup("json"); ok {
+		parts := strings.Split(jsonTag, ",")
 		if len(parts) > 0 {
 			return strings.TrimSpace(parts[0])
 		}
 	}
 	return f.Name
+}
+
+func isInline(f reflect.StructField) bool {
+	return hasTag(f, "inline")
+}
+
+func isOmitempty(f reflect.StructField) bool {
+	return hasTag(f, "omitempty")
+}
+
+func hasTag(f reflect.StructField, tag string) bool {
+	if jsonTag, ok := f.Tag.Lookup("json"); ok {
+		parts := strings.Split(jsonTag, ",")
+		if len(parts) > 1 {
+			for i := 1; i < len(parts); i++ {
+				if parts[i] == tag {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
