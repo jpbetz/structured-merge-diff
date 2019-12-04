@@ -17,6 +17,7 @@ limitations under the License.
 package value
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -41,17 +42,66 @@ func TestReflectPrimitives(t *testing.T) {
 	}
 }
 
-func TestReflectCustomConversion(t *testing.T) {
+type Convertable struct {
+	Value string
+}
+
+func (t Convertable) MarshalJSON() ([]byte, error) {
+	return json.Marshal(t.Value)
+}
+
+func (t Convertable) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &t.Value)
+}
+
+type PtrConvertable struct {
+	Value string
+}
+
+func (t *PtrConvertable) MarshalJSON() ([]byte, error) {
+	return json.Marshal(t.Value)
+}
+
+func (t *PtrConvertable) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &t.Value)
+}
+
+func TestReflectCustomStringConversion(t *testing.T) {
 	dateTime, err := time.Parse(time.RFC3339, "2006-01-02T15:04:05+07:00")
 	if err != nil {
 		t.Fatal(err)
 	}
-	rv := MustReflect(dateTime)
-	if !rv.IsString() {
-		t.Error("expected IsString to be true")
+	cases := []struct{
+		name string
+		convertable interface{}
+		expected string
+	} {
+		{
+			name: "struct",
+			convertable: Convertable{Value: "struct-test"},
+			expected: "struct-test",
+		},
+		{
+			name: "pointer",
+			convertable: &PtrConvertable{Value: "pointer-test"},
+			expected: "pointer-test",
+		},
+		{
+			name: "time",
+			convertable: dateTime,
+			expected: "2006-01-02T15:04:05+07:00",
+		},
 	}
-	if rv.String() != "2006-01-02T15:04:05+07:00" {
-		t.Errorf("expected rv.String to be %v but got %s", dateTime, rv.String())
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rv := MustReflect(tc.convertable)
+			if !rv.IsString() {
+				t.Fatal("expected IsString to be true")
+			}
+			if rv.String() != tc.expected {
+				t.Errorf("expected rv.String to be %v but got %s", tc.expected, rv.String())
+			}
+		})
 	}
 }
 
