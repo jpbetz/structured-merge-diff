@@ -33,16 +33,7 @@ var reflectPool = sync.Pool{
 var marshalerType = reflect.TypeOf(new(json.Marshaler)).Elem()
 
 func Reflect(value interface{}) (Value, error) {
-	return reflectVal(reflect.ValueOf(value))
-}
-
-func reflectVal(value reflect.Value) (Value, error) {
-	if isCustomConvertable(value) {
-		return toUnstructured(value)
-	}
-	rv := reflectPool.Get().(*reflectValue)
-	rv.Value = value
-	return rv, nil
+	return wrap(reflect.ValueOf(value))
 }
 
 func MustReflect(value interface{}) Value {
@@ -53,8 +44,17 @@ func MustReflect(value interface{}) Value {
 	return v
 }
 
-func mustReflectVal(value reflect.Value) Value {
-	v, err := reflectVal(value)
+func wrap(value reflect.Value) (Value, error) {
+	if isCustomConvertable(value) {
+		return toUnstructured(value)
+	}
+	rv := reflectPool.Get().(*reflectValue)
+	rv.Value = value
+	return rv, nil
+}
+
+func mustWrap(value reflect.Value) Value {
+	v, err := wrap(value)
 	if err != nil {
 		panic(err)
 	}
@@ -122,17 +122,21 @@ func safeIsNil(v reflect.Value) bool {
 	}
 	return false
 }
+
 func (r reflectValue) Map() Map {
 	rval := deref(r.Value)
 	switch rval.Kind() {
 	case reflect.Struct:
 		return reflectStruct{Value: r.Value}
 	case reflect.Map:
-		return reflectMap{Value: r.Value}
+		rv := reflectMapPool.Get().(*reflectMap)
+		rv.Value = r.Value
+		return rv
 	default:
 		panic("value is not a map or struct")
 	}
 }
+
 func (r reflectValue) Recycle() {
 	reflectPool.Put(r)
 }
@@ -143,12 +147,14 @@ func (r reflectValue) List() List {
 	}
 	panic("value is not a list")
 }
+
 func (r reflectValue) Bool() bool {
 	if r.IsBool() {
 		return deref(r.Value).Bool()
 	}
 	panic("value is not a bool")
 }
+
 func (r reflectValue) Int() int64 {
 	// TODO: What about reflect.Value.Uint?
 	if r.IsInt() {
@@ -156,18 +162,21 @@ func (r reflectValue) Int() int64 {
 	}
 	panic("value is not an int")
 }
+
 func (r reflectValue) Float() float64 {
 	if r.IsFloat() {
 		return deref(r.Value).Float()
 	}
 	panic("value is not a float")
 }
+
 func (r reflectValue) String() string {
 	if r.IsString() {
 		return deref(r.Value).String()
 	}
 	panic("value is not a string")
 }
+
 func (r reflectValue) Interface() interface{} {
 	// In order to be mergable with unstructured, must return unstructured here
 	v, err := toUnstructured(deref(r.Value))
@@ -175,6 +184,12 @@ func (r reflectValue) Interface() interface{} {
 		panic("unable to convert to unstructured via json round-trip")
 	}
 	return v.Interface()
+}
+
+var reflectMapPool = sync.Pool{
+	New: func() interface{} {
+		return &reflectMap{}
+	},
 }
 
 type reflectMap struct {
@@ -194,7 +209,7 @@ func (r reflectMap) Get(key string) (Value, bool) {
 	if !val.IsValid() {
 		return nil, false
 	}
-	return mustReflectVal(val), val != zero
+	return mustWrap(val), val != zero
 }
 
 func (r reflectMap) Set(key string, val Value) {
@@ -220,18 +235,20 @@ func (r reflectMap) Iterate(fn func(string, Value) bool) bool {
 		if !next.IsValid() {
 			continue
 		}
-		if !fn(iter.Key().String(), mustReflectVal(next)) {
+		if !fn(iter.Key().String(), mustWrap(next)) {
 			return false
 		}
 	}
 	return true
 }
+
 func (r reflectMap) Equals(m Map) bool {
 	// TODO use reflect.DeepEqual
 	return MapCompare(r, m) == 0
 }
+
 func (r reflectMap) Recycle() {
-	// TODO implement this
+	reflectMapPool.Put(r)
 }
 
 type reflectStruct struct {
@@ -277,7 +294,7 @@ func (r reflectStruct) Length() int {
 
 func (r reflectStruct) Get(key string) (Value, bool) {
 	if val, ok := r.findJsonNameField(key); ok {
-		return mustReflectVal(val), true
+		return mustWrap(val), true
 	}
 	// TODO: decide how to handle invalid keys
 	return MustReflect(nil), false
@@ -311,7 +328,7 @@ func (r reflectStruct) iterate(rval reflect.Value, fn func(string, Value) bool) 
 			}
 		} else if isOmitempty(field) && (safeIsNil(fieldVal) || isEmptyValue(fieldVal)) {
 			// skip it
-		} else if !fn(lookupJsonName(field), mustReflectVal(rval.Field(i))) {
+		} else if !fn(lookupJsonName(field), mustWrap(rval.Field(i))) {
 			return false
 		}
 	}
@@ -334,7 +351,7 @@ func (r ReflectList) Length() int {
 
 func (r ReflectList) At(i int) Value {
 	rval := deref(r.Value)
-	return mustReflectVal(rval.Index(i))
+	return mustWrap(rval.Index(i))
 }
 
 var zero = reflect.Value{}
@@ -388,6 +405,7 @@ func hasOpt(f reflect.StructField, opt string) bool {
 }
 
 // Copied from https://golang.org/src/encoding/json/encode.go
+
 func isEmptyValue(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
