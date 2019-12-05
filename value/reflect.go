@@ -50,7 +50,7 @@ func wrap(value reflect.Value) (Value, error) {
 	}
 	rv := reflectPool.Get().(*reflectValue)
 	rv.Value = value
-	return rv, nil
+	return Value(rv), nil
 }
 
 func mustWrap(value reflect.Value) Value {
@@ -129,15 +129,13 @@ func (r reflectValue) Map() Map {
 	case reflect.Struct:
 		return reflectStruct{Value: r.Value}
 	case reflect.Map:
-		rv := reflectMapPool.Get().(*reflectMap)
-		rv.Value = r.Value
-		return rv
+		return reflectMap{Value: r.Value}
 	default:
 		panic("value is not a map or struct")
 	}
 }
 
-func (r reflectValue) Recycle() {
+func (r *reflectValue) Recycle() {
 	reflectPool.Put(r)
 }
 
@@ -186,12 +184,6 @@ func (r reflectValue) Interface() interface{} {
 	return v.Interface()
 }
 
-var reflectMapPool = sync.Pool{
-	New: func() interface{} {
-		return &reflectMap{}
-	},
-}
-
 type reflectMap struct {
 	Value reflect.Value
 }
@@ -235,9 +227,12 @@ func (r reflectMap) Iterate(fn func(string, Value) bool) bool {
 		if !next.IsValid() {
 			continue
 		}
-		if !fn(iter.Key().String(), mustWrap(next)) {
+		mapVal := mustWrap(next)
+		if !fn(iter.Key().String(), mapVal) {
+			mapVal.Recycle()
 			return false
 		}
+		mapVal.Recycle()
 	}
 	return true
 }
@@ -245,10 +240,6 @@ func (r reflectMap) Iterate(fn func(string, Value) bool) bool {
 func (r reflectMap) Equals(m Map) bool {
 	// TODO use reflect.DeepEqual
 	return MapCompare(r, m) == 0
-}
-
-func (r reflectMap) Recycle() {
-	reflectMapPool.Put(r)
 }
 
 type reflectStruct struct {
@@ -328,8 +319,13 @@ func (r reflectStruct) iterate(rval reflect.Value, fn func(string, Value) bool) 
 			}
 		} else if isOmitempty(field) && (safeIsNil(fieldVal) || isEmptyValue(fieldVal)) {
 			// skip it
-		} else if !fn(lookupJsonName(field), mustWrap(rval.Field(i))) {
-			return false
+		} else {
+			fieldVal := mustWrap(rval.Field(i))
+			if !fn(lookupJsonName(field), fieldVal) {
+				fieldVal.Recycle()
+				return false
+			}
+			fieldVal.Recycle()
 		}
 	}
 	return true
