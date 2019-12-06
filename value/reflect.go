@@ -250,7 +250,6 @@ func (r reflectMap) Iterate(fn func(string, Value) bool) bool {
 			mapVal.Recycle()
 			return false
 		}
-		mapVal.Recycle()
 	}
 	return true
 }
@@ -262,34 +261,29 @@ func (r reflectMap) Equals(m Map) bool {
 
 type reflectStruct struct {
 	Value reflect.Value
-	// TODO: is creating this lookup table worth the allocation?
-	sync.Once
-	fieldByJsonName map[string]reflect.Value
 }
 
 func (r reflectStruct) findJsonNameField(jsonName string) (reflect.Value, bool) {
-	val := r.Value
-	r.Once.Do(func() {
-		r.fieldByJsonName = make(map[string]reflect.Value, val.NumField())
-		r.accumulateFields(r.fieldByJsonName, val)
-	})
-	field, ok := r.fieldByJsonName[jsonName]
-	return field, ok
-}
-
-func (r reflectStruct) accumulateFields(fields map[string]reflect.Value, val reflect.Value) {
-	t := val.Type()
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		fieldVal := val.FieldByIndex(field.Index)
-		if isInline(field) {
-			r.accumulateFields(fields, val.FieldByIndex(field.Index))
-		} else if isOmitempty(field) && (safeIsNil(fieldVal) || isEmptyValue(fieldVal)) {
-			// skip it
-		} else {
-			r.fieldByJsonName[lookupJsonName(field)] = fieldVal
-		}
+	// Try to lookup by the expected go field name first, since it's fast
+	// TODO: this does not work for names like 'uid' (jsonName: uid, goName: UID)
+	goName := strings.Title(jsonName)
+	if field, ok := r.Value.Type().FieldByName(goName); ok && lookupJsonName(field) == jsonName {
+		return r.Value.FieldByIndex(field.Index), true
 	}
+
+	// If the first lookup fails, fallback to a scan of all fields for one with a matching json tag
+	var fieldVal reflect.Value
+	found := false
+	walkStructValues(r.Value, func(s string, value reflect.Value) bool {
+		if jsonName == s {
+			fieldVal = value
+			found = true
+			return false
+		}
+		return true
+	})
+	return fieldVal, found
+
 }
 
 func (r reflectStruct) Length() int {
@@ -324,20 +318,19 @@ func (r reflectStruct) Delete(key string) {
 }
 
 func (r reflectStruct) Iterate(fn func(string, Value) bool) bool {
-	return r.iterateValues(r.Value, func(s string, value reflect.Value) bool {
+	return walkStructValues(r.Value, func(s string, value reflect.Value) bool {
 		v := mustWrap(value)
-		ok := fn(s, v)
-		v.Recycle()
-		return ok
+		defer v.Recycle()
+		return fn(s, v)
 	})
 }
 
-func (r reflectStruct) iterateValues(val reflect.Value, fn func(string, reflect.Value) bool) bool {
+func walkStructValues(val reflect.Value, fn func(string, reflect.Value) bool) bool {
 	for i := 0; i < val.NumField(); i++ {
 		field := val.Type().Field(i)
 		fieldVal := val.FieldByIndex(field.Index)
 		if isInline(field) {
-			if ok := r.iterateValues(fieldVal, fn); !ok {
+			if ok := walkStructValues(fieldVal, fn); !ok {
 				return false
 			}
 		} else if isOmitempty(field) && (safeIsNil(fieldVal) || isEmptyValue(fieldVal)) {
