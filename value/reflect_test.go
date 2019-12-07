@@ -77,13 +77,18 @@ func TestReflectCustomStringConversion(t *testing.T) {
 		expected string
 	} {
 		{
-			name: "struct",
+			name: "marshalable-struct",
 			convertable: Convertable{Value: "struct-test"},
 			expected: "struct-test",
 		},
 		{
-			name: "pointer",
+			name: "marshalable-pointer",
 			convertable: &PtrConvertable{Value: "pointer-test"},
+			expected: "pointer-test",
+		},
+		{
+			name: "pointer-to-marshalable-struct",
+			convertable: &Convertable{Value: "pointer-test"},
 			expected: "pointer-test",
 		},
 		{
@@ -96,7 +101,7 @@ func TestReflectCustomStringConversion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rv := MustReflect(tc.convertable)
 			if !rv.IsString() {
-				t.Fatal("expected IsString to be true")
+				t.Fatalf("expected IsString to be true, but kind is: %T", rv.Interface())
 			}
 			if rv.String() != tc.expected {
 				t.Errorf("expected rv.String to be %v but got %s", tc.expected, rv.String())
@@ -120,6 +125,10 @@ type T struct {
 	I int64 `json:"int"`
 }
 
+type testReflectStruct struct{I int64 `json:"int"`; S string}
+type testInlineStruct struct{Inline T `json:",inline"`; S string}
+type testOmitemptyStruct struct{Noomit *string `json:"noomit"`; Omit *string `json:"omit,omitempty"`}
+
 // TODO: test Set, Delete
 func TestReflectStruct(t *testing.T) {
 	cases := []struct{
@@ -129,22 +138,22 @@ func TestReflectStruct(t *testing.T) {
 	} {
 		{
 			name: "struct",
-			val: struct{I int64 `json:"int"`; S string} {I: 10, S: "string"},
+			val: testReflectStruct{I: 10, S: "string"},
 			expectedMap: map[string]interface{}{"int": int64(10), "S": "string"},
 		},
 		{
 			name: "structPtr",
-			val: &struct{I int64 `json:"int"`; S string} {I: 10, S: "string"},
+			val: &testReflectStruct{I: 10, S: "string"},
 			expectedMap: map[string]interface{}{"int": int64(10), "S": "string"},
 		},
 		{
 			name: "inline",
-			val: &struct{Inline T `json:",inline"`; S string} {Inline: T{I: 10}, S: "string"},
+			val: &testInlineStruct {Inline: T{I: 10}, S: "string"},
 			expectedMap: map[string]interface{}{"int": int64(10), "S": "string"},
 		},
 		{
 			name: "omitempty",
-			val: struct{Noomit *string `json:"noomit"`; Omit *string `json:"omit,omitempty"`} {Noomit: nil, Omit: nil},
+			val: testOmitemptyStruct {Noomit: nil, Omit: nil},
 			expectedMap: map[string]interface{}{"noomit": (*string)(nil)},
 		},
 	}
@@ -168,7 +177,7 @@ func TestReflectStruct(t *testing.T) {
 			}
 			iterateResult := map[string]interface{}{}
 			m.Iterate(func(s string, value Value) bool {
-				iterateResult[s] = value.Interface()
+				iterateResult[s] = value.(*reflectValue).Value.Interface()
 				return true
 			})
 			if !reflect.DeepEqual(iterateResult, tc.expectedMap) {

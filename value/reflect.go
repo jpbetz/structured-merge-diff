@@ -43,10 +43,10 @@ func MustReflect(value interface{}) Value {
 }
 
 func wrap(value reflect.Value) (Value, error) {
-	value = deref(value)
-	if isCustomConvertable(value) {
+	if hasJsonMarshaler(value) {
 		return toUnstructured(value)
 	}
+	value = deref(value)
 	val := reflectPool.Get().(*reflectValue)
 	val.Value = value
 	return Value(val), nil
@@ -60,9 +60,71 @@ func mustWrap(value reflect.Value) Value {
 	return v
 }
 
+// Reflection is much faster if we maintain some lookup info for all struct types.
+var (
+	reflectHints      = map[reflect.Type]structHints{}
+	reflectHintsMu sync.RWMutex
+)
+
+// structHints contains information about each field, keyed by json name of the field.
+type structHints map[string]*fieldHints
+
+type fieldHints struct {
+	// isOmitEmpty is true if the field has the json 'omitempty' tag.
+	isOmitEmpty bool
+	// fieldPath is the field indices (see FieldByIndex) to lookup the value of
+	// a field in a reflect.Value struct. A path of field indices is used
+	// to support traversing to a field nested in struct fields that have the 'inline'
+	// json tag.
+	fieldPath [][]int
+}
+
+func (f *fieldHints) lookupField(structVal reflect.Value) reflect.Value {
+	// field might be nested within 'inline' structs
+	for _, elem := range f.fieldPath {
+		structVal = structVal.FieldByIndex(elem)
+	}
+	return structVal
+}
+
+func getStructHints(t reflect.Type) structHints {
+	var hints structHints
+	ok := false
+	func() {
+		reflectHintsMu.RLock()
+		defer reflectHintsMu.RUnlock()
+		hints, ok = reflectHints[t]
+	}()
+	if ok {
+		return hints
+	}
+
+	hints = map[string]*fieldHints{}
+	buildStructHints(t, hints, nil)
+
+	reflectHintsMu.Lock()
+	defer reflectHintsMu.Unlock()
+	reflectHints[t] = hints
+	return hints
+}
+
+func buildStructHints(t reflect.Type, infos map[string]*fieldHints, fieldPath [][]int) {
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		jsonName, isInline, isOmitempty := lookupJsonTags(field)
+		if isInline {
+			buildStructHints(field.Type, infos, append(fieldPath, field.Index))
+			continue
+		}
+		info := &fieldHints{isOmitEmpty: isOmitempty, fieldPath: append(fieldPath, field.Index)}
+		infos[jsonName] = info
+
+	}
+}
+
 var marshalerType = reflect.TypeOf(new(json.Marshaler)).Elem()
 
-func isCustomConvertable(val reflect.Value) bool{
+func hasJsonMarshaler(val reflect.Value) bool{
 	if ! val.IsValid() {
 		return false
 	}
@@ -263,29 +325,6 @@ type reflectStruct struct {
 	Value reflect.Value
 }
 
-func (r reflectStruct) findJsonNameField(jsonName string) (reflect.Value, bool) {
-	// Try to lookup by the expected go field name first, since it's fast
-	// TODO: this does not work for names like 'uid' (jsonName: uid, goName: UID)
-	goName := strings.Title(jsonName)
-	if field, ok := r.Value.Type().FieldByName(goName); ok && lookupJsonName(field) == jsonName {
-		return r.Value.FieldByIndex(field.Index), true
-	}
-
-	// If the first lookup fails, fallback to a scan of all fields for one with a matching json tag
-	var fieldVal reflect.Value
-	found := false
-	walkStructValues(r.Value, func(s string, value reflect.Value) bool {
-		if jsonName == s {
-			fieldVal = value
-			found = true
-			return false
-		}
-		return true
-	})
-	return fieldVal, found
-
-}
-
 func (r reflectStruct) Length() int {
 	i := 0
 	r.Iterate(func(s string, value Value) bool {
@@ -317,6 +356,14 @@ func (r reflectStruct) Delete(key string) {
 	// TODO: decide how to handle invalid keys
 }
 
+func (r reflectStruct) findJsonNameField(jsonName string) (reflect.Value, bool) {
+	fieldHints, ok := getStructHints(r.Value.Type())[jsonName]
+	if !ok {
+		return reflect.Value{}, false
+	}
+	return fieldHints.lookupField(r.Value), true
+}
+
 func (r reflectStruct) Iterate(fn func(string, Value) bool) bool {
 	return walkStructValues(r.Value, func(s string, value reflect.Value) bool {
 		v := mustWrap(value)
@@ -326,19 +373,15 @@ func (r reflectStruct) Iterate(fn func(string, Value) bool) bool {
 }
 
 func walkStructValues(val reflect.Value, fn func(string, reflect.Value) bool) bool {
-	for i := 0; i < val.NumField(); i++ {
-		field := val.Type().Field(i)
-		fieldVal := val.FieldByIndex(field.Index)
-		if isInline(field) {
-			if ok := walkStructValues(fieldVal, fn); !ok {
-				return false
-			}
-		} else if isOmitempty(field) && (safeIsNil(fieldVal) || isEmptyValue(fieldVal)) {
-			// skip it
-		} else {
-			if !fn(lookupJsonName(field), val.Field(i)) {
-				return false
-			}
+	for jsonName, hints := range getStructHints(val.Type()) {
+		fieldVal := hints.lookupField(val)
+		if hints.isOmitEmpty && (safeIsNil(fieldVal) || isEmptyValue(fieldVal)) {
+			// omit it
+			continue
+		}
+		ok := fn(jsonName, fieldVal)
+		if !ok {
+			return false
 		}
 	}
 	return true
@@ -365,39 +408,23 @@ func (r ReflectList) At(i int) Value {
 
 func deref(val reflect.Value) reflect.Value {
 	kind := val.Kind()
-	if kind == reflect.Interface || kind == reflect.Ptr {
+	if (kind == reflect.Interface || kind == reflect.Ptr) && !safeIsNil(val) {
 		return val.Elem()
 	}
 	return val
 }
 
-func lookupJsonName(f reflect.StructField) string {
+func lookupJsonTags(f reflect.StructField) (string, bool, bool) {
+	var name string
 	tag := f.Tag.Get("json")
 	if tag == "-"  {
-		return f.Name
+		return f.Name, false, false
 	}
-	name, _ := parseTag(tag)
+	name, opts := parseTag(tag)
 	if name == "" {
-		return f.Name
+		name = f.Name
 	}
-	return name
-}
-
-func isInline(f reflect.StructField) bool {
-	return hasOpt(f, "inline")
-}
-
-func isOmitempty(f reflect.StructField) bool {
-	return hasOpt(f, "omitempty")
-}
-
-func hasOpt(f reflect.StructField, opt string) bool {
-	tag := f.Tag.Get("json")
-	if tag == "-"  {
-		return false
-	}
-	_, opts := parseTag(tag)
-	return opts.Contains(opt)
+	return name, opts.Contains("inline"), opts.Contains("omitempty")
 }
 
 // Copied from https://golang.org/src/encoding/json/encode.go
