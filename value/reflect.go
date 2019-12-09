@@ -60,13 +60,13 @@ func mustWrap(value reflect.Value) Value {
 	return v
 }
 
-// Reflection is much faster if we maintain some lookup info for all struct types.
+// Keep track of json tag related data for structs and fields to speed up reflection.
 var (
 	reflectHints      = map[reflect.Type]structHints{}
 	reflectHintsMu sync.RWMutex
 )
 
-// structHints contains information about each field, keyed by json name of the field.
+// structHints contains hints about each field, keyed by field json name.
 type structHints map[string]*fieldHints
 
 type fieldHints struct {
@@ -365,16 +365,16 @@ func (r reflectStruct) findJsonNameField(jsonName string) (reflect.Value, bool) 
 }
 
 func (r reflectStruct) Iterate(fn func(string, Value) bool) bool {
-	return walkStructValues(r.Value, func(s string, value reflect.Value) bool {
+	return eachStructValue(r.Value, func(s string, value reflect.Value) bool {
 		v := mustWrap(value)
 		defer v.Recycle()
 		return fn(s, v)
 	})
 }
 
-func walkStructValues(val reflect.Value, fn func(string, reflect.Value) bool) bool {
-	for jsonName, hints := range getStructHints(val.Type()) {
-		fieldVal := hints.lookupField(val)
+func eachStructValue(structVal reflect.Value, fn func(string, reflect.Value) bool) bool {
+	for jsonName, hints := range getStructHints(structVal.Type()) {
+		fieldVal := hints.lookupField(structVal)
 		if hints.isOmitEmpty && (safeIsNil(fieldVal) || isEmptyValue(fieldVal)) {
 			// omit it
 			continue
