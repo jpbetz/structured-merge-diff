@@ -361,7 +361,9 @@ func (r reflectStruct) findJsonNameField(jsonName string) (reflect.Value, bool) 
 	if !ok {
 		return reflect.Value{}, false
 	}
-	return fieldHints.lookupField(r.Value), true
+	fieldVal := fieldHints.lookupField(r.Value)
+	ok = fieldHints.isOmitEmpty && (safeIsNil(fieldVal) || isEmptyValue(fieldVal))
+	return fieldVal, ok
 }
 
 func (r reflectStruct) Iterate(fn func(string, Value) bool) bool {
