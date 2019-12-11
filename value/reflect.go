@@ -19,6 +19,7 @@ package value
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"reflect"
 	"strings"
 	"sync"
@@ -149,6 +150,9 @@ func toUnstructured(val reflect.Value) (Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error decoding %v from json: %v", data, err)
 	}
+	if len(data) > 100 {
+		log.Printf("toUnstructured: %d bytes: %s", len(data), data[0:100])
+	}
 	return  NewValueInterface(wrappedResult.Value), nil
 }
 
@@ -223,7 +227,7 @@ func (r *reflectValue) Recycle() {
 
 func (r reflectValue) List() List {
 	if r.IsList() {
-		return ReflectList{r.Value}
+		return reflectList{r.Value}
 	}
 	panic("value is not a list")
 }
@@ -258,12 +262,27 @@ func (r reflectValue) String() string {
 }
 
 func (r reflectValue) Interface() interface{} {
-	// In order to be mergable with unstructured, must return unstructured here
-	v, err := toUnstructured(r.Value)
-	if err != nil {
-		panic("unable to convert to unstructured via json round-trip")
+	val := r.Value
+	switch {
+	case r.IsNull():
+		return nil
+	case val.Kind() == reflect.Struct:
+		return reflectStruct{Value: r.Value}.Interface()
+	case val.Kind() == reflect.Map:
+		return reflectMap{Value: r.Value}.Interface()
+	case r.IsList():
+		return reflectList{Value: r.Value}.Interface()
+	case r.IsString():
+		return r.String()
+	case r.IsInt():
+		return r.Int()
+	case r.IsBool():
+		return r.Bool()
+	case r.IsFloat():
+		return r.Float()
+	default:
+		panic("value is not a map or struct")
 	}
-	return v.Interface()
 }
 
 type reflectMap struct {
@@ -285,6 +304,16 @@ func (r reflectMap) Get(key string) (Value, bool) {
 	return mustWrap(val), val != reflect.Value{}
 }
 
+func (r reflectMap) Has(key string) bool {
+	var val reflect.Value
+	// TODO: this only works for strings and string alias key types
+	val = r.Value.MapIndex(r.toMapKey(key))
+	if !val.IsValid() {
+		return false
+	}
+	return val != reflect.Value{}
+}
+
 func (r reflectMap) Set(key string, val Value) {
 	r.Value.SetMapIndex(r.toMapKey(key), reflect.ValueOf(val.Interface()))
 }
@@ -300,20 +329,34 @@ func (r reflectMap) toMapKey(key string) reflect.Value {
 }
 
 func (r reflectMap) Iterate(fn func(string, Value) bool) bool {
-	val := r.Value
+	return eachMapEntry(r.Value, func(s string, value reflect.Value) bool {
+		mapVal := mustWrap(value)
+		defer mapVal.Recycle()
+		return fn(s, mapVal)
+	})
+}
+
+func eachMapEntry(val reflect.Value, fn func(string, reflect.Value) bool) bool {
 	iter := val.MapRange()
 	for iter.Next() {
 		next := iter.Value()
 		if !next.IsValid() {
 			continue
 		}
-		mapVal := mustWrap(next)
-		if !fn(iter.Key().String(), mapVal) {
-			mapVal.Recycle()
+		if !fn(iter.Key().String(), next) {
 			return false
 		}
 	}
 	return true
+}
+
+func (r reflectMap) Interface() interface{} {
+	result := make(map[string]interface{}, r.Length())
+	r.Iterate(func(s string, value Value) bool {
+		result[s] = value.Interface()
+		return true
+	})
+	return result
 }
 
 func (r reflectMap) Equals(m Map) bool {
@@ -342,6 +385,11 @@ func (r reflectStruct) Get(key string) (Value, bool) {
 	return MustReflect(nil), false
 }
 
+func (r reflectStruct) Has(key string) bool {
+	_, ok := r.findJsonNameField(key)
+	return ok
+}
+
 func (r reflectStruct) Set(key string, val Value) {
 	if val, ok := r.findJsonNameField(key); ok {
 		val.Set(val)
@@ -367,14 +415,23 @@ func (r reflectStruct) findJsonNameField(jsonName string) (reflect.Value, bool) 
 }
 
 func (r reflectStruct) Iterate(fn func(string, Value) bool) bool {
-	return eachStructValue(r.Value, func(s string, value reflect.Value) bool {
+	return eachStructField(r.Value, func(s string, value reflect.Value) bool {
 		v := mustWrap(value)
 		defer v.Recycle()
 		return fn(s, v)
 	})
 }
 
-func eachStructValue(structVal reflect.Value, fn func(string, reflect.Value) bool) bool {
+func (r reflectStruct) Interface() interface{} {
+	result := make(map[string]interface{}, r.Length())
+	r.Iterate(func(s string, value Value) bool {
+		result[s] = value.Interface()
+		return true
+	})
+	return result
+}
+
+func eachStructField(structVal reflect.Value, fn func(string, reflect.Value) bool) bool {
 	for jsonName, hints := range getStructHints(structVal.Type()) {
 		fieldVal := hints.lookupField(structVal)
 		if hints.isOmitEmpty && (safeIsNil(fieldVal) || isEmptyValue(fieldVal)) {
@@ -394,18 +451,27 @@ func (r reflectStruct) Equals(m Map) bool {
 	return MapCompare(r, m) == 0
 }
 
-type ReflectList struct {
+type reflectList struct {
 	Value reflect.Value
 }
 
-func (r ReflectList) Length() int {
+func (r reflectList) Length() int {
 	val := r.Value
 	return val.Len()
 }
 
-func (r ReflectList) At(i int) Value {
+func (r reflectList) At(i int) Value {
 	val := r.Value
 	return mustWrap(val.Index(i))
+}
+
+func (r reflectList) Interface() interface{} {
+	l := r.Length()
+	result := make([]interface{}, l)
+	for i := 0; i < l; i++ {
+		result[i] = r.At(i).Interface()
+	}
+	return result
 }
 
 func deref(val reflect.Value) reflect.Value {

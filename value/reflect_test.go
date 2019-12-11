@@ -135,26 +135,31 @@ func TestReflectStruct(t *testing.T) {
 		name string
 		val interface{}
 		expectedMap map[string]interface{}
+		expectedInterface interface{}
 	} {
 		{
 			name: "struct",
 			val: testReflectStruct{I: 10, S: "string"},
 			expectedMap: map[string]interface{}{"int": int64(10), "S": "string"},
+			expectedInterface: map[string]interface{}{"int": int64(10), "S": "string"},
 		},
 		{
 			name: "structPtr",
 			val: &testReflectStruct{I: 10, S: "string"},
 			expectedMap: map[string]interface{}{"int": int64(10), "S": "string"},
+			expectedInterface: map[string]interface{}{"int": int64(10), "S": "string"},
 		},
 		{
 			name: "inline",
 			val: &testInlineStruct {Inline: T{I: 10}, S: "string"},
 			expectedMap: map[string]interface{}{"int": int64(10), "S": "string"},
+			expectedInterface: map[string]interface{}{"int": int64(10), "S": "string"},
 		},
 		{
 			name: "omitempty",
 			val: testOmitemptyStruct {Noomit: nil, Omit: nil},
 			expectedMap: map[string]interface{}{"noomit": (*string)(nil)},
+			expectedInterface: map[string]interface{}{"noomit": nil},
 		},
 	}
 
@@ -183,6 +188,12 @@ func TestReflectStruct(t *testing.T) {
 			if !reflect.DeepEqual(iterateResult, tc.expectedMap) {
 				t.Errorf("expected iterate to produce %#v but got %#v", tc.expectedMap, iterateResult)
 			}
+
+			interfaceResult := rv.Interface()
+			if !reflect.DeepEqual(interfaceResult, tc.expectedInterface) {
+				t.Errorf("expected iterate to produce %#v but got %#v", tc.expectedInterface, interfaceResult)
+			}
+
 		})
 	}
 }
