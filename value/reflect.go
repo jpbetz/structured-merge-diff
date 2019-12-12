@@ -17,9 +17,9 @@ limitations under the License.
 package value
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"reflect"
 	"strings"
 	"sync"
@@ -138,20 +138,37 @@ func hasJsonMarshaler(val reflect.Value) bool{
 	}
 }
 
+// TODO: round tripping through unstructured is expensive, can we avoid this entirely somehow?
 func toUnstructured(val reflect.Value) (Value, error) {
-	// TODO: round tripping through unstructured is expensive, can we avoid for both custom conversion and merging structured with unstructured?
+	if safeIsNil(val) {
+		return NewValueInterface(nil), nil
+	}
+
+	// It's cheaper to use json.Marhsal than to call MarshalJSON on val via reflection.
 	data, err := json.Marshal(val.Interface())
 	if err != nil {
 		return nil, fmt.Errorf("error encoding %v to json: %v", val, err)
 	}
+	// Special case strings, since Unmarshalling to interface{} is more expensive
+	if bytes.HasPrefix(data, []byte{'"'}) { // The only valid JSON type starting with a quote is a string
+		var result string
+		err = json.Unmarshal(data, &result)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding %v from json: %v", data, err)
+		}
+		return NewValueInterface(result), nil
+	}
+	// Special case null as well
+	if bytes.Equal(data, []byte("null")) {
+		return NewValueInterface(nil), nil
+	}
+
+	// Typically json.Marshaler is used to coerce to string, so this is only a fallback
 	wrappedResult := struct{Value interface{}}{}
 	wrappedData := fmt.Sprintf("{\"Value\": %s}", data)
 	err = json.Unmarshal([]byte(wrappedData), &wrappedResult)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding %v from json: %v", data, err)
-	}
-	if len(data) > 100 {
-		log.Printf("toUnstructured: %d bytes: %s", len(data), data[0:100])
 	}
 	return  NewValueInterface(wrappedResult.Value), nil
 }
@@ -370,7 +387,7 @@ type reflectStruct struct {
 
 func (r reflectStruct) Length() int {
 	i := 0
-	r.Iterate(func(s string, value Value) bool {
+	eachStructField(r.Value, func(s string, value reflect.Value) bool {
 		i++
 		return true
 	})
@@ -423,7 +440,8 @@ func (r reflectStruct) Iterate(fn func(string, Value) bool) bool {
 }
 
 func (r reflectStruct) Interface() interface{} {
-	result := make(map[string]interface{}, r.Length())
+	// Use number of struct fields as a cheap way to rough estimate map size
+	result := make(map[string]interface{}, r.Value.NumField())
 	r.Iterate(func(s string, value Value) bool {
 		result[s] = value.Interface()
 		return true
