@@ -28,6 +28,7 @@ import (
 type CustomTypeConverter interface {
 	//Equal(lhs reflect.Value, rhs reflect.Value) bool
 	ToString(v reflect.Value) string
+	FromString(s string) reflect.Value
 	IsNull(v reflect.Value) bool
 }
 var CustomTypeConverters = map[reflect.Type]CustomTypeConverter{}
@@ -56,6 +57,7 @@ func wrap(value reflect.Value) (Value, error) {
 			return reflectConverted{Value: value, Converter: converter}, nil
 		}
 	}
+	// TODO(jpbetz): Optimize away this hasJsonMarshaler call
 	if hasJsonMarshaler(value) {
 		return toUnstructured(value)
 	}
