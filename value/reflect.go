@@ -18,6 +18,7 @@ package value
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -196,7 +197,7 @@ func (r reflectValue) IsMap() bool {
 }
 
 func (r reflectValue) IsList() bool {
-	return r.isKind(reflect.Slice, reflect.Array)
+	return r.isKind(reflect.Slice, reflect.Array) && !r.isBytes()
 }
 
 func (r reflectValue) IsBool() bool {
@@ -204,8 +205,7 @@ func (r reflectValue) IsBool() bool {
 }
 
 func (r reflectValue) IsInt() bool {
-	// This feels wrong. Very wrong.
-	return r.isKind(reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Uint64, reflect.Uint, reflect.Uint32, reflect.Uint16, reflect.Uint8)
+	return r.isKind(reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Uint, reflect.Uint32, reflect.Uint16, reflect.Uint8)
 }
 
 func (r reflectValue) IsFloat() bool {
@@ -213,7 +213,12 @@ func (r reflectValue) IsFloat() bool {
 }
 
 func (r reflectValue) IsString() bool {
-	return r.isKind(reflect.String)
+	return r.isKind(reflect.String) || r.isBytes()
+}
+
+func (r reflectValue) isBytes() bool {
+	typ := r.Value.Type()
+	return typ.Kind() == reflect.Slice && typ.Elem().Kind() == reflect.Uint8
 }
 
 func (r reflectValue) IsNull() bool {
@@ -271,9 +276,11 @@ func (r reflectValue) Bool() bool {
 }
 
 func (r reflectValue) Int() int64 {
-	// TODO: What about reflect.Value.Uint?
-	if r.IsInt() {
+	if r.isKind(reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8) {
 		return r.Value.Int()
+	}
+	if r.isKind(reflect.Uint, reflect.Uint32, reflect.Uint16, reflect.Uint8) {
+		return int64(r.Value.Uint())
 	}
 	panic("value is not an int")
 }
@@ -286,8 +293,11 @@ func (r reflectValue) Float() float64 {
 }
 
 func (r reflectValue) String() string {
-	if r.IsString() {
+	if r.Value.Kind() == reflect.String {
 		return r.Value.String()
+	}
+	if r.isBytes() {
+		return base64.StdEncoding.EncodeToString(r.Value.Bytes())
 	}
 	panic("value is not a string")
 }
@@ -312,7 +322,7 @@ func (r reflectValue) Interface() interface{} {
 	case r.IsFloat():
 		return r.Float()
 	default:
-		panic("value is not a map or struct")
+		panic(fmt.Sprintf("value is not a supported structured type: %s (kind: %s)", val.Type(), val.Kind()))
 	}
 }
 
