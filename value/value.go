@@ -202,17 +202,17 @@ func ToString(v Value) string {
 	case v.IsBool():
 		return fmt.Sprintf("%v", v.Bool())
 	case v.IsList():
-		strs := []string{}
+		var strs []string
 		for i := 0; i < v.List().Length(); i++ {
 			strs = append(strs, ToString(v.List().At(i)))
 		}
 		return "[" + strings.Join(strs, ",") + "]"
 	case v.IsMap():
-		strs := []string{}
-		v.Map().Iterate(func(k string, v Value) bool {
-			strs = append(strs, fmt.Sprintf("%v=%v", k, ToString(v)))
-			return true
-		})
+		var strs []string
+		iter := v.Map().Range()
+		for iter.Next() {
+			strs = append(strs, fmt.Sprintf("%v=%v", iter.Key(), ToString(iter.Value())))
+		}
 		return strings.Join(strs, "")
 	}
 	// No field is set, on either objects.

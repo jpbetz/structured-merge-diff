@@ -68,6 +68,26 @@ func (r mapReflect) Iterate(fn func(string, Value) bool) bool {
 	})
 }
 
+type mapReflectIter struct {
+	iter *reflect.MapIter
+}
+
+func (i mapReflectIter) Key() string {
+	return i.iter.Key().String()
+}
+
+func (i mapReflectIter) Value() Value {
+	return mustWrapValueReflect(i.iter.Value())
+}
+
+func (i mapReflectIter) Next() bool {
+	return i.iter.Next()
+}
+
+func (r mapReflect) Range() MapIter {
+	return mapReflectIter{iter: r.Value.MapRange()}
+}
+
 func eachMapEntry(val reflect.Value, fn func(string, reflect.Value) bool) bool {
 	iter := val.MapRange()
 	for iter.Next() {
@@ -95,11 +115,36 @@ func (r mapReflect) Equals(m Map) bool {
 	if r.Length() != m.Length() {
 		return false
 	}
-	return m.Iterate(func(key string, value Value) bool {
+	iter := m.Range()
+	for iter.Next() {
+		key := iter.Key()
+		value := iter.Value()
 		lhsVal, ok := r.Get(key)
 		if !ok {
+			value.Recycle()
 			return false
 		}
-		return Equals(lhsVal, value)
-	})
+		equal := Equals(lhsVal, value)
+		value.Recycle()
+		lhsVal.Recycle()
+		if !equal {
+			return false
+		}
+	}
+	return true
 }
+
+// func (r mapReflect) Equals(m Map) bool {
+// 	if r.Length() != m.Length() {
+// 		return false
+// 	}
+// 	return m.Iterate(func(key string, value Value) bool {
+// 		lhsVal, ok := r.Get(key)
+// 		if !ok {
+// 			return false
+// 		}
+// 		equals := Equals(lhsVal, value)
+// 		//lhsVal.Recycle()
+// 		return equals
+// 	})
+// }

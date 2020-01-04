@@ -27,11 +27,11 @@ type Field struct {
 	Value Value
 }
 
-// FieldList is a list of key-value pairs. Each field is expected to
+// FieldList is a fieldList of key-value pairs. Each field is expected to
 // have a different name.
 type FieldList []Field
 
-// Sort sorts the field list by Name.
+// Sort sorts the field fieldList by Name.
 func (f FieldList) Sort() {
 	if len(f) < 2 {
 		return

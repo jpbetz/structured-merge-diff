@@ -16,7 +16,7 @@ limitations under the License.
 
 package value
 
-// List represents a list object.
+// List represents a fieldList object.
 type List interface {
 	// Length returns how many items can be found in the map.
 	Length() int

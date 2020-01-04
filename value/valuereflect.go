@@ -43,6 +43,11 @@ func NewValueReflect(value interface{}) (Value, error) {
 }
 
 func wrapValueReflect(value reflect.Value) (Value, error) {
+	if value.IsValid() {
+		if converter, ok := CustomTypeConverters[value.Type()]; ok {
+			return reflectConverted{Value: value, Converter: converter}, nil
+		}
+	}
 	// TODO: conversion of json.Marshaller interface types is expensive. This can be mostly optimized away by
 	// introducing conversion functions that do not require going through JSON and using those here.
 	if marshaler, ok := getMarshaler(value); ok {
@@ -151,7 +156,7 @@ func (r valueReflect) List() List {
 	if r.IsList() {
 		return listReflect{r.Value}
 	}
-	panic("value is not a list")
+	panic("value is not a fieldList")
 }
 
 func (r valueReflect) Bool() bool {
@@ -220,6 +225,7 @@ func (r valueReflect) Unstructured() interface{} {
 
 var marshalerType = reflect.TypeOf(new(json.Marshaler)).Elem()
 
+// TODO: reflect.Implements is an expensive call. Caching which structs are marshal-able could spead this up
 func getMarshaler(v reflect.Value) (json.Marshaler, bool) {
 	// Check value receivers if v is not a pointer and pointer receivers if v is a pointer
 	if v.Type().Implements(marshalerType) {
@@ -298,4 +304,89 @@ func toUnstructured(marshaler json.Marshaler, sv reflect.Value) (Value, error) {
 		}
 		return nil, fmt.Errorf("error decoding number from json: %v", err)
 	}
+}
+
+type CustomTypeConverter interface {
+	ToString(v reflect.Value) string
+	FromString(s string) reflect.Value
+	IsNull(v reflect.Value) bool
+}
+
+var CustomTypeConverters = map[reflect.Type]CustomTypeConverter{}
+
+type reflectConverted struct {
+	Value reflect.Value
+	Converter CustomTypeConverter
+}
+
+func (r reflectConverted) IsMap() bool {
+	return false
+}
+
+func (r reflectConverted) IsList() bool {
+	return false
+}
+
+func (r reflectConverted) IsBool() bool {
+	return false
+}
+
+func (r reflectConverted) IsInt() bool {
+	return false
+}
+
+func (r reflectConverted) IsFloat() bool {
+	return false
+}
+
+func (r reflectConverted) IsString() bool {
+	return !r.IsNull()
+}
+
+func (r reflectConverted) IsNull() bool {
+	if safeIsNil(r.Value) {
+		return true
+	}
+	if r.Value.Kind() == reflect.Ptr {
+		return r.Converter.IsNull(r.Value.Elem())
+	}
+	return r.Converter.IsNull(r.Value)
+}
+
+func (r reflectConverted) Map() Map {
+	panic("value is not a map")
+}
+
+func (r reflectConverted) List() List {
+	panic("value is not a fieldList")
+}
+
+func (r reflectConverted) Bool() bool {
+	panic("value is not a boolean")
+}
+
+func (r reflectConverted) Int() int64 {
+	panic("value is not a int")
+}
+
+func (r reflectConverted) Float() float64 {
+	panic("value is not a float")
+}
+
+func (r reflectConverted) String() string {
+	if r.Value.Kind() == reflect.Ptr {
+		return r.Converter.ToString(r.Value.Elem())
+	}
+	return r.Converter.ToString(r.Value)
+}
+
+func (r reflectConverted) Recycle() {
+
+}
+
+func (r reflectConverted) Unstructured() interface{} {
+	if r.IsNull() {
+		return nil
+	}
+	return r.String()
 }

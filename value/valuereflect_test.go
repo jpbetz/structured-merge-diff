@@ -246,6 +246,15 @@ func TestReflectStruct(t *testing.T) {
 				t.Errorf("expected iterate to produce %#v but got %#v", tc.expectedMap, iterateResult)
 			}
 
+			rangeResult := map[string]interface{}{}
+			iter := m.Range()
+			for iter.Next() {
+				rangeResult[iter.Key()] = iter.Value().(*valueReflect).Value.Interface()
+			}
+			if !reflect.DeepEqual(rangeResult, tc.expectedMap) {
+				t.Errorf("expected iterate to produce %#v but got %#v", tc.expectedMap, rangeResult)
+			}
+
 			unstructured := rv.Unstructured()
 			if !reflect.DeepEqual(unstructured, tc.expectedUnstructured) {
 				t.Errorf("expected iterate to produce %#v but got %#v", tc.expectedUnstructured, unstructured)
@@ -335,6 +344,16 @@ func TestReflectMap(t *testing.T) {
 			if !reflect.DeepEqual(iterateResult, tc.expectedMap) {
 				t.Errorf("expected iterate to produce %#v but got %#v", tc.expectedMap, iterateResult)
 			}
+
+			rangeResult := map[string]interface{}{}
+			iter := m.Range()
+			for iter.Next() {
+				rangeResult[iter.Key()] = iter.Value().String()
+			}
+			if !reflect.DeepEqual(rangeResult, tc.expectedMap) {
+				t.Errorf("expected range to produce %#v but got %#v", tc.expectedMap, rangeResult)
+			}
+
 			unstructured := rv.Unstructured()
 			if !reflect.DeepEqual(unstructured, tc.expectedUnstructured) {
 				t.Errorf("expected iterate to produce %#v but got %#v", tc.expectedUnstructured, unstructured)
@@ -407,7 +426,7 @@ func TestReflectList(t *testing.T) {
 			}
 			m := rv.List()
 			if m.Length() != tc.length {
-				t.Errorf("expected list to be of length %d but got %d", tc.length, m.Length())
+				t.Errorf("expected fieldList to be of length %d but got %d", tc.length, m.Length())
 			}
 			l := m.Length()
 			iterateResult := make([]interface{}, l)
@@ -433,6 +452,6 @@ func TestReflectListAt(t *testing.T) {
 	list := rv.List()
 	atOne := list.At(1)
 	if atOne.String() != "two" {
-		t.Errorf("expected list.At(1) to be 'two' but got: %v", atOne)
+		t.Errorf("expected fieldList.At(1) to be 'two' but got: %v", atOne)
 	}
 }

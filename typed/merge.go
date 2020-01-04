@@ -312,29 +312,38 @@ func (w *mergingWalker) visitMapItems(t *schema.Map, lhs, rhs value.Map) (errs V
 	out := map[string]interface{}{}
 
 	if lhs != nil {
-		lhs.Iterate(func(key string, val value.Value) bool {
+		iter := lhs.Range()
+		for iter.Next() {
+			key := iter.Key()
+			lval := iter.Value()
 			var rval value.Value
 			if rhs != nil {
 				if item, ok := rhs.Get(key); ok {
 					rval = item
-					defer rval.Recycle()
 				}
 			}
-			errs = append(errs, w.visitMapItem(t, out, key, val, rval)...)
-			return true
-		})
+			errs = append(errs, w.visitMapItem(t, out, key, lval, rval)...)
+			lval.Recycle()
+			if rval != nil {
+				rval.Recycle()
+			}
+		}
 	}
 
 	if rhs != nil {
-		rhs.Iterate(func(key string, val value.Value) bool {
+		iter := rhs.Range()
+		for iter.Next() {
+			key := iter.Key()
 			if lhs != nil {
 				if lhs.Has(key) {
-					return true
+					continue
 				}
 			}
-			errs = append(errs, w.visitMapItem(t, out, key, nil, val)...)
-			return true
-		})
+			rval := iter.Value()
+			errs = append(errs, w.visitMapItem(t, out, key, nil, rval)...)
+			rval.Recycle()
+			continue
+		}
 	}
 	if len(out) > 0 {
 		i := interface{}(out)
@@ -343,6 +352,41 @@ func (w *mergingWalker) visitMapItems(t *schema.Map, lhs, rhs value.Map) (errs V
 
 	return errs
 }
+// func (w *mergingWalker) visitMapItems(t *schema.Map, lhs, rhs value.Map) (errs ValidationErrors) {
+// 	out := map[string]interface{}{}
+//
+// 	if lhs != nil {
+// 		lhs.Iterate(func(key string, val value.Value) bool {
+// 			var rval value.Value
+// 			if rhs != nil {
+// 				if item, ok := rhs.Get(key); ok {
+// 					rval = item
+// 					defer rval.Recycle()
+// 				}
+// 			}
+// 			errs = append(errs, w.visitMapItem(t, out, key, val, rval)...)
+// 			return true
+// 		})
+// 	}
+//
+// 	if rhs != nil {
+// 		rhs.Iterate(func(key string, val value.Value) bool {
+// 			if lhs != nil {
+// 				if lhs.Has(key) {
+// 					return true
+// 				}
+// 			}
+// 			errs = append(errs, w.visitMapItem(t, out, key, nil, val)...)
+// 			return true
+// 		})
+// 	}
+// 	if len(out) > 0 {
+// 		i := interface{}(out)
+// 		w.out = &i
+// 	}
+//
+// 	return errs
+// }
 
 func (w *mergingWalker) doMap(t *schema.Map) (errs ValidationErrors) {
 	var lhs, rhs value.Map

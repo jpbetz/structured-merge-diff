@@ -155,24 +155,46 @@ func (v *validatingObjectWalker) doList(t *schema.List) (errs ValidationErrors) 
 }
 
 func (v *validatingObjectWalker) visitMapItems(t *schema.Map, m value.Map) (errs ValidationErrors) {
-	m.Iterate(func(key string, val value.Value) bool {
+	iter := m.Range()
+	for iter.Next() {
+		key := iter.Key()
 		pe := fieldpath.PathElement{FieldName: &key}
 		tr := t.ElementType
 		if sf, ok := t.FindField(key); ok {
 			tr = sf.Type
 		} else if (t.ElementType == schema.TypeRef{}) {
 			errs = append(errs, errorf("field not declared in schema").WithPrefix(pe.String())...)
-			return false
+			break
 		}
 		v2 := v.prepareDescent(tr)
-		v2.value = val
+		v2.value = iter.Value()
 		// Giving pe.String as a parameter actually increases the allocations.
 		errs = append(errs, v2.validate(func() string { return pe.String() })...)
 		v.finishDescent(v2)
-		return true
-	})
+		v2.value.Recycle()
+	}
 	return errs
 }
+
+// func (v *validatingObjectWalker) visitMapItems(t *schema.Map, m value.Map) (errs ValidationErrors) {
+// 	m.Iterate(func(key string, val value.Value) bool {
+// 		pe := fieldpath.PathElement{FieldName: &key}
+// 		tr := t.ElementType
+// 		if sf, ok := t.FindField(key); ok {
+// 			tr = sf.Type
+// 		} else if (t.ElementType == schema.TypeRef{}) {
+// 			errs = append(errs, errorf("field not declared in schema").WithPrefix(pe.String())...)
+// 			return false
+// 		}
+// 		v2 := v.prepareDescent(tr)
+// 		v2.value = val
+// 		// Giving pe.String as a parameter actually increases the allocations.
+// 		errs = append(errs, v2.validate(func() string { return pe.String() })...)
+// 		v.finishDescent(v2)
+// 		return true
+// 	})
+// 	return errs
+// }
 
 func (v *validatingObjectWalker) doMap(t *schema.Map) (errs ValidationErrors) {
 	m, err := mapValue(v.value)

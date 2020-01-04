@@ -34,6 +34,8 @@ type Map interface {
 	// Equals compares the two maps, and return true if they are the same, false otherwise.
 	// Implementations can use MapEquals as a general implementation for this methods.
 	Equals(other Map) bool
+	// Range returns an iterator over the map
+	Range() MapIter
 	// Iterate runs the given function for each key/value in the
 	// map. Returning false in the closure prematurely stops the
 	// iteration.
@@ -42,24 +44,75 @@ type Map interface {
 	Length() int
 }
 
+type MapIter interface {
+	Key() string
+	Value() Value
+	Next() bool
+}
+
 // MapLess compares two maps lexically.
 func MapLess(lhs, rhs Map) bool {
 	return MapCompare(lhs, rhs) == -1
 }
 
 // MapCompare compares two maps lexically.
+// func MapCompare(lhs, rhs Map) int {
+// 	lorder := make([]string, 0, lhs.Length())
+// 	lhs.Iterate(func(key string, _ Value) bool {
+// 		lorder = append(lorder, key)
+// 		return true
+// 	})
+// 	sort.Strings(lorder)
+// 	rorder := make([]string, 0, rhs.Length())
+// 	rhs.Iterate(func(key string, _ Value) bool {
+// 		rorder = append(rorder, key)
+// 		return true
+// 	})
+// 	sort.Strings(rorder)
+//
+// 	i := 0
+// 	for {
+// 		if i >= len(lorder) && i >= len(rorder) {
+// 			// Maps are the same length and all items are equal.
+// 			return 0
+// 		}
+// 		if i >= len(lorder) {
+// 			// LHS is shorter.
+// 			return -1
+// 		}
+// 		if i >= len(rorder) {
+// 			// RHS is shorter.
+// 			return 1
+// 		}
+// 		if c := strings.Compare(lorder[i], rorder[i]); c != 0 {
+// 			return c
+// 		}
+// 		litem, _ := lhs.Get(lorder[i])
+// 		ritem, _ := rhs.Get(rorder[i])
+// 		if c := Compare(litem, ritem); c != 0 {
+// 			litem.Recycle()
+// 			ritem.Recycle()
+// 			return c
+// 		}
+// 		litem.Recycle()
+// 		ritem.Recycle()
+// 		// The items are equal; continue.
+// 		i++
+// 	}
+// }
+
 func MapCompare(lhs, rhs Map) int {
 	lorder := make([]string, 0, lhs.Length())
-	lhs.Iterate(func(key string, _ Value) bool {
-		lorder = append(lorder, key)
-		return true
-	})
+	iter := lhs.Range()
+	for iter.Next() {
+		lorder = append(lorder, iter.Key())
+	}
 	sort.Strings(lorder)
 	rorder := make([]string, 0, rhs.Length())
-	rhs.Iterate(func(key string, _ Value) bool {
-		rorder = append(rorder, key)
-		return true
-	})
+	iter = rhs.Range()
+	for iter.Next() {
+		rorder = append(rorder, iter.Key())
+	}
 	sort.Strings(rorder)
 
 	i := 0
@@ -82,6 +135,8 @@ func MapCompare(lhs, rhs Map) int {
 		litem, _ := lhs.Get(lorder[i])
 		ritem, _ := rhs.Get(rorder[i])
 		if c := Compare(litem, ritem); c != 0 {
+			litem.Recycle()
+			ritem.Recycle()
 			return c
 		}
 		litem.Recycle()
@@ -94,20 +149,44 @@ func MapCompare(lhs, rhs Map) int {
 // MapEquals returns true if lhs == rhs, false otherwise. This function
 // acts on generic types and should not be used by callers, but can help
 // implement Map.Equals.
+// func MapEquals(lhs, rhs Map) bool {
+// 	if lhs.Length() != rhs.Length() {
+// 		return false
+// 	}
+// 	return lhs.Iterate(func(k string, v Value) bool {
+// 		vo, ok := rhs.Get(k)
+// 		if !ok {
+// 			return false
+// 		}
+// 		if !Equals(v, vo) {
+// 			vo.Recycle()
+// 			return false
+// 		}
+// 		vo.Recycle()
+// 		return true
+// 	})
+// }
+
 func MapEquals(lhs, rhs Map) bool {
 	if lhs.Length() != rhs.Length() {
 		return false
 	}
-	return lhs.Iterate(func(k string, v Value) bool {
+	iter := lhs.Range()
+	for iter.Next() {
+		k := iter.Key()
+		v := iter.Value()
 		vo, ok := rhs.Get(k)
 		if !ok {
+			v.Recycle()
 			return false
 		}
 		if !Equals(v, vo) {
+			v.Recycle()
 			vo.Recycle()
 			return false
 		}
+		v.Recycle()
 		vo.Recycle()
-		return true
-	})
+	}
+	return true
 }

@@ -55,6 +55,44 @@ func (m mapUnstructuredInterface) Iterate(fn func(key string, value Value) bool)
 	return true
 }
 
+type mapUnstructuredInterfaceIter struct {
+	m mapUnstructuredInterface
+	keys []string
+	idx int
+}
+
+func (i *mapUnstructuredInterfaceIter) Key() string {
+	return i.keys[i.idx]
+}
+
+func (i *mapUnstructuredInterfaceIter) Value() Value {
+	if v, ok := i.m[i.keys[i.idx]]; !ok {
+		panic("Value() call on illegal iterator state") // FIXME:
+	} else {
+		return NewValueInterface(v)
+	}
+}
+
+func (i *mapUnstructuredInterfaceIter) Next() bool {
+	i.idx++
+	return i.idx < len(i.keys)
+}
+
+func (m mapUnstructuredInterface) Range() MapIter {
+	// TODO: if map is longer than some threshold, it might be better to do:
+	// if len(r) > 1000 {
+	// 	return mapReflectIter{iter: reflect.ValueOf(r).MapRange()}
+	// }
+
+	keys := make([]string, len(m))
+	i := 0
+	for k := range m {
+		keys[i] = k.(string)
+		i++
+	}
+	return &mapUnstructuredInterfaceIter{m: m, keys: keys, idx: -1}
+}
+
 func (m mapUnstructuredInterface) Length() int {
 	return len(m)
 }
@@ -121,6 +159,44 @@ func (m mapUnstructuredString) Iterate(fn func(key string, value Value) bool) bo
 
 func (m mapUnstructuredString) Length() int {
 	return len(m)
+}
+
+type mapUnstructuredStringIter struct {
+	m mapUnstructuredString
+	keys []string
+	idx int
+}
+
+func (i *mapUnstructuredStringIter) Key() string {
+	return i.keys[i.idx]
+}
+
+func (i *mapUnstructuredStringIter) Value() Value {
+	if v, ok := i.m[i.keys[i.idx]]; !ok {
+		panic("Value() call on illegal iterator state") // FIXME:
+	} else {
+		return NewValueInterface(v)
+	}
+}
+
+func (i *mapUnstructuredStringIter) Next() bool {
+	i.idx++
+	return i.idx < len(i.keys)
+}
+
+func (r mapUnstructuredString) Range() MapIter {
+	// TODO: if map is longer than some threshold, it might be better to do:
+	// if len(r) > 1000 {
+	// 	return mapReflectIter{iter: reflect.ValueOf(r).MapRange()}
+	// }
+
+	keys := make([]string, len(r))
+	i := 0
+	for k := range r {
+		keys[i] = k
+		i++
+	}
+	return &mapUnstructuredStringIter{m: r, keys: keys, idx: -1}
 }
 
 func (m mapUnstructuredString) Equals(other Map) bool {
