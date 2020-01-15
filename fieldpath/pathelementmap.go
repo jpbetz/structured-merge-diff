@@ -69,7 +69,7 @@ func (s *PathElementValueMap) Insert(pe PathElement, v value.Value) {
 	s.members[loc] = pathElementValue{pe, v}
 }
 
-// Get retrieves the value associated with the given PathElement from the map.
+// get retrieves the value associated with the given PathElement from the map.
 // (nil, false) is returned if there is no such PathElement.
 func (s *PathElementValueMap) Get(pe PathElement) (value.Value, bool) {
 	loc := sort.Search(len(s.members), func(i int) bool {

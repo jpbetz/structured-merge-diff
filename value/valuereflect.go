@@ -17,9 +17,7 @@ limitations under the License.
 package value
 
 import (
-	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
@@ -51,9 +49,10 @@ func NewValueReflect(value interface{}) (Value, error) {
 func wrapValueReflect(parentMap, parentMapKey *reflect.Value, value reflect.Value) (Value, error) {
 	// TODO: conversion of json.Marshaller interface types is expensive. This can be mostly optimized away by
 	// introducing conversion functions that do not require going through JSON and using those here.
-	if marshaler, ok := getMarshaler(value); ok {
-		vv := viPool.Get().(*valueUnstructured)
-		return toUnstructured(vv, marshaler, value)
+	reflectCacheEntry := GetReflectCacheEntry(value.Type())
+	if reflectCacheEntry.CanConvert() {
+		value, err := reflectCacheEntry.ToUnstructured(value)
+		return NewValueInterface(value), err
 	}
 	value = dereference(value)
 	val := reflectPool.Get().(*valueReflect)
@@ -233,95 +232,6 @@ func (r valueReflect) Unstructured() interface{} {
 	}
 }
 
-// The below getMarshaler and toUnstructured functions are based on
-// https://github.com/kubernetes/kubernetes/blob/40df9f82d0572a123f5ad13f48312978a2ff5877/staging/src/k8s.io/apimachinery/pkg/runtime/converter.go#L509
-// and should somehow be consolidated with it
-
-var marshalerType = reflect.TypeOf(new(json.Marshaler)).Elem()
-
-func getMarshaler(v reflect.Value) (json.Marshaler, bool) {
-	// Check value receivers if v is not a pointer and pointer receivers if v is a pointer
-	if v.Type().Implements(marshalerType) {
-		return v.Interface().(json.Marshaler), true
-	}
-	// Check pointer receivers if v is not a pointer
-	if v.Kind() != reflect.Ptr && v.CanAddr() {
-		v = v.Addr()
-		if v.Type().Implements(marshalerType) {
-			return v.Interface().(json.Marshaler), true
-		}
-	}
-	return nil, false
-}
-
-var (
-	nullBytes  = []byte("null")
-	trueBytes  = []byte("true")
-	falseBytes = []byte("false")
-)
-
-func toUnstructured(into *valueUnstructured, marshaler json.Marshaler, sv reflect.Value) (Value, error) {
-	data, err := marshaler.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	switch {
-	case len(data) == 0:
-		return nil, fmt.Errorf("error decoding from json: empty value")
-
-	case bytes.Equal(data, nullBytes):
-		// We're done - we don't need to store anything.
-		into.Value = nil
-
-	case bytes.Equal(data, trueBytes):
-		into.Value = true
-
-	case bytes.Equal(data, falseBytes):
-		into.Value = false
-
-	case data[0] == '"':
-		var result string
-		err := json.Unmarshal(data, &result)
-		if err != nil {
-			return nil, fmt.Errorf("error decoding string from json: %v", err)
-		}
-		into.Value = result
-
-	case data[0] == '{':
-		result := make(map[string]interface{})
-		err := json.Unmarshal(data, &result)
-		if err != nil {
-			return nil, fmt.Errorf("error decoding object from json: %v", err)
-		}
-		into.Value = result
-
-	case data[0] == '[':
-		result := make([]interface{}, 0)
-		err := json.Unmarshal(data, &result)
-		if err != nil {
-			return nil, fmt.Errorf("error decoding array from json: %v", err)
-		}
-		into.Value = result
-
-	default:
-		var (
-			resultInt   int64
-			resultFloat float64
-			err         error
-		)
-		if err = json.Unmarshal(data, &resultInt); err == nil {
-			into.Value = resultInt
-			return into, nil
-		}
-		if err = json.Unmarshal(data, &resultFloat); err == nil {
-			into.Value = resultFloat
-			return into, nil
-		}
-		return nil, fmt.Errorf("error decoding number from json: %v", err)
-	}
-	return into, nil
-}
-
 // tempValuePooler manages sync.Pool usage for reflect iterators that need either a temporary valueReflect or a
 // valueUnstructured for each iterator callback invocation. Directly reusing value objects for each iterator callback
 // invocation is much more efficient than using getting and putting objects to a sync.Pool.
@@ -361,23 +271,17 @@ func (ir *tempValuePooler) Recycle() {
 // NewValueReflect returns a Value wrapping the given reflect.Value. The returned Value is valid only temporarily.
 // The returned Value becomes invalid on the next NewValueReflect call.
 func (ir *tempValuePooler) NewValueReflect(value reflect.Value) Value {
-	if marshaler, ok := getMarshaler(value); ok {
-		vi := ir.pooledValueInterface()
-		marshaled, err := toUnstructured(vi, marshaler, value)
+	reflectCacheEntry := GetReflectCacheEntry(value.Type())
+	if reflectCacheEntry.CanConvert() {
+		value, err := reflectCacheEntry.ToUnstructured(value)
 		if err != nil {
 			panic(err)
 		}
-		return marshaled
+		vi := ir.pooledValueInterface()
+		vi.Value = value
+		return vi
 	}
 	vr := ir.pooledValueReflect()
 	vr.Value = dereference(value)
 	return vr
-}
-
-// NewValueInterface returns a Value wrapping the given interface{}.  The returned Value is valid only temporarily.
-// // The returned Value becomes invalid on the next NewValueInterface call.
-func (ir *tempValuePooler) NewValueInterface(value interface{}) Value {
-	vi := ir.pooledValueInterface()
-	vi.Value = value
-	return vi
 }

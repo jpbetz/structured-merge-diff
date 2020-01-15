@@ -187,7 +187,7 @@ func Equals(lhs, rhs Value) bool {
 	return true
 }
 
-// ToString returns a human-readable representation of the value.
+// AsString returns a human-readable representation of the value.
 func ToString(v Value) string {
 	if v.IsNull() {
 		return "null"

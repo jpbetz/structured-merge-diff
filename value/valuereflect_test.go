@@ -494,10 +494,10 @@ func TestReflectMapMutate(t *testing.T) {
 	m := rv.AsMap()
 	atKey1, ok := m.Get("key1")
 	if !ok {
-		t.Errorf("expected map.Get(key1) to be 'value1' but got !ok")
+		t.Errorf("expected map.get(key1) to be 'value1' but got !ok")
 	}
 	if atKey1.AsString() != "value1" {
-		t.Errorf("expected map.Get(key1) to be 'value1' but got: %v", atKey1)
+		t.Errorf("expected map.get(key1) to be 'value1' but got: %v", atKey1)
 	}
 	m.Set("key1", NewValueInterface("replacement"))
 	m.Delete("key2")

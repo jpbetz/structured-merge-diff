@@ -221,7 +221,7 @@ func (s *SetNodeMap) Empty() bool {
 	return true
 }
 
-// Get returns (the associated set, true) or (nil, false) if there is none.
+// get returns (the associated set, true) or (nil, false) if there is none.
 func (s *SetNodeMap) Get(pe PathElement) (*Set, bool) {
 	loc := sort.Search(len(s.members), func(i int) bool {
 		return !s.members[i].pathElement.Less(pe)

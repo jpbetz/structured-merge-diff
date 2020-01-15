@@ -47,7 +47,7 @@ type structCacheMap map[reflect.Type]structCacheEntry
 // compute using reflection.
 type structCacheEntry map[string]*fieldCacheEntry
 
-// Get returns true and fieldCacheEntry for the given type if the type is in the cache. Otherwise Get returns false.
+// get returns true and fieldCacheEntry for the given type if the type is in the cache. Otherwise get returns false.
 func (c *structCache) Get(t reflect.Type) (map[string]*fieldCacheEntry, bool) {
 	entry, ok := c.value.Load().(structCacheMap)[t]
 	return entry, ok

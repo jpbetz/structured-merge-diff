@@ -25,7 +25,7 @@ import (
 type Map interface {
 	// Set changes or set the value of the given key.
 	Set(key string, val Value)
-	// Get returns the value for the given key, if present, or (nil, false) otherwise.
+	// get returns the value for the given key, if present, or (nil, false) otherwise.
 	Get(key string) (Value, bool)
 	// Has returns true if the key is present, or false otherwise.
 	Has(key string) bool
