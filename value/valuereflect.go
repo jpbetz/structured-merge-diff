@@ -49,8 +49,8 @@ func NewValueReflect(value interface{}) (Value, error) {
 func wrapValueReflect(parentMap, parentMapKey *reflect.Value, value reflect.Value) (Value, error) {
 	// TODO: conversion of json.Marshaller interface types is expensive. This can be mostly optimized away by
 	// introducing conversion functions that do not require going through JSON and using those here.
-	reflectCacheEntry := GetReflectCacheEntry(value.Type())
-	if reflectCacheEntry.CanConvert() {
+	reflectCacheEntry := TypeReflectEntryOf(value.Type())
+	if reflectCacheEntry.CanConvertToUnstructured() {
 		value, err := reflectCacheEntry.ToUnstructured(value)
 		return NewValueInterface(value), err
 	}
@@ -271,8 +271,8 @@ func (ir *tempValuePooler) Recycle() {
 // NewValueReflect returns a Value wrapping the given reflect.Value. The returned Value is valid only temporarily.
 // The returned Value becomes invalid on the next NewValueReflect call.
 func (ir *tempValuePooler) NewValueReflect(value reflect.Value) Value {
-	reflectCacheEntry := GetReflectCacheEntry(value.Type())
-	if reflectCacheEntry.CanConvert() {
+	reflectCacheEntry := TypeReflectEntryOf(value.Type())
+	if reflectCacheEntry.CanConvertToUnstructured() {
 		value, err := reflectCacheEntry.ToUnstructured(value)
 		if err != nil {
 			panic(err)

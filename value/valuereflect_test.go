@@ -118,6 +118,30 @@ func (t *PtrConvertable) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &t.Value)
 }
 
+type StringConvertable struct {
+	Value string
+}
+
+func (t StringConvertable) MarshalJSON() ([]byte, error) {
+	return json.Marshal(t.Value)
+}
+
+func (t StringConvertable) ToUnstructuredString() (string, bool) {
+	return t.Value, true
+}
+
+type PtrStringConvertable struct {
+	Value string
+}
+
+func (t PtrStringConvertable) MarshalJSON() ([]byte, error) {
+	return json.Marshal(t.Value)
+}
+
+func (t *PtrStringConvertable) ToUnstructuredString() (string, bool) {
+	return t.Value, true
+}
+
 func TestReflectCustomStringConversion(t *testing.T) {
 	dateTime, err := time.Parse(time.RFC3339, "2006-01-02T15:04:05+07:00")
 	if err != nil {
@@ -141,6 +165,21 @@ func TestReflectCustomStringConversion(t *testing.T) {
 		{
 			name:        "pointer-to-marshalable-struct",
 			convertable: &Convertable{Value: "pointer-test"},
+			expected:    "pointer-test",
+		},
+		{
+			name:        "string-convertable-struct",
+			convertable: StringConvertable{Value: "struct-test"},
+			expected:    "struct-test",
+		},
+		{
+			name:        "string-convertable-pointer",
+			convertable: &PtrStringConvertable{Value: "struct-test"},
+			expected:    "struct-test",
+		},
+		{
+			name:        "pointer-to-string-convertable-struct",
+			convertable: &StringConvertable{Value: "pointer-test"},
 			expected:    "pointer-test",
 		},
 		{
