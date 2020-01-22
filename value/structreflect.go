@@ -99,6 +99,60 @@ func (r structReflect) Iterate(fn func(string, Value) bool) bool {
 	})
 }
 
+
+func (r structReflect) Range() MapRange {
+	cacheEntry := TypeReflectEntryOf(r.Value.Type())
+	fieldList := cacheEntry.FieldList()
+	return &structReflectRange{r.Value, cacheEntry, fieldList, -1, len(fieldList), newTempValuePooler()}
+}
+
+type structReflectRange struct {
+	val    reflect.Value
+	cacheEntry TypeReflectCacheEntry
+	fields []*FieldCacheEntry
+	i int
+	length int
+	pooler *tempValuePooler
+}
+
+func (r *structReflectRange) Next() bool {
+	r.i++
+	for r.i < r.length {
+		fieldEntry := r.fields[r.i]
+		fieldVal := fieldEntry.GetFrom(r.val)
+		omit := fieldEntry.isOmitEmpty && (safeIsNil(fieldVal) || isZero(fieldVal))
+		if !omit {
+			return true
+		}
+		r.i++
+	}
+	return false
+}
+
+func (r *structReflectRange) Key() string {
+	if r.i < 0 {
+		panic("Key() called before first calling Next()")
+	}
+	if r.i >= r.length {
+		panic("Key() called on MapRange with no more items")
+	}
+	return r.fields[r.i].jsonName
+}
+
+func (r *structReflectRange) Value() Value {
+	if r.i < 0 {
+		panic("Value() called before first calling Next()")
+	}
+	if r.i >= r.length {
+		panic("Value() called on MapRange with no more items")
+	}
+	return r.pooler.NewValueReflect(r.fields[r.i].GetFrom(r.val))
+}
+
+func (r *structReflectRange) Recycle() {
+	r.pooler.Recycle()
+}
+
 func eachStructField(structVal reflect.Value, fn func(string, reflect.Value) bool) bool {
 	for jsonName, fieldCacheEntry := range TypeReflectEntryOf(structVal.Type()).Fields() {
 		fieldVal := fieldCacheEntry.GetFrom(structVal)
@@ -135,14 +189,21 @@ func (r structReflect) Equals(m Map) bool {
 
 	vp := newTempValuePooler()
 	defer vp.Recycle()
-	return m.Iterate(func(s string, value Value) bool {
+	iter := m.Range()
+	defer iter.Recycle()
+	for iter.Next() {
+		s := iter.Key()
+		value := iter.Value()
 		fieldCacheEntry, ok := structCacheEntry[s]
 		if !ok {
 			return false
 		}
 		lhsVal := fieldCacheEntry.GetFrom(r.Value)
-		return Equals(vp.NewValueReflect(lhsVal), value)
-	})
+		if !Equals(vp.NewValueReflect(lhsVal), value) {
+			return false
+		}
+	}
+	return true
 }
 
 func (r structReflect) findJsonNameFieldAndNotEmpty(jsonName string) (reflect.Value, bool) {

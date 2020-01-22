@@ -312,29 +312,37 @@ func (w *mergingWalker) visitMapItems(t *schema.Map, lhs, rhs value.Map) (errs V
 	out := map[string]interface{}{}
 
 	if lhs != nil {
-		lhs.Iterate(func(key string, val value.Value) bool {
+		iter := lhs.Range()
+		defer iter.Recycle()
+		for iter.Next() {
+			key := iter.Key()
+			val := iter.Value()
 			var rval value.Value
 			if rhs != nil {
 				if item, ok := rhs.Get(key); ok {
 					rval = item
-					defer rval.Recycle()
 				}
 			}
 			errs = append(errs, w.visitMapItem(t, out, key, val, rval)...)
-			return true
-		})
+			if rval != nil {
+				rval.Recycle()
+			}
+		}
 	}
 
 	if rhs != nil {
-		rhs.Iterate(func(key string, val value.Value) bool {
+		iter := rhs.Range()
+		defer iter.Recycle()
+		for iter.Next() {
+			key := iter.Key()
+			val := iter.Value()
 			if lhs != nil {
 				if lhs.Has(key) {
-					return true
+					continue
 				}
 			}
 			errs = append(errs, w.visitMapItem(t, out, key, nil, val)...)
-			return true
-		})
+		}
 	}
 	if len(out) > 0 {
 		i := interface{}(out)

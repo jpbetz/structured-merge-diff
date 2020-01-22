@@ -46,11 +46,13 @@ type TypeReflectCacheEntry struct {
 	ptrIsStringConvertable bool
 
 	structFields map[string]*FieldCacheEntry
+	fieldList []*FieldCacheEntry
 }
 
 // FieldCacheEntry keeps data gathered using reflection about how the field of a struct is converted to/from
 // unstructured.
 type FieldCacheEntry struct {
+	jsonName string
 	// isOmitEmpty is true if the field has the json 'omitempty' tag.
 	isOmitEmpty bool
 	// fieldPath is the field indices (see FieldByIndex) to lookup the value of
@@ -87,9 +89,14 @@ func TypeReflectEntryOf(t reflect.Type) TypeReflectCacheEntry {
 		ptrIsStringConvertable: reflect.PtrTo(t).Implements(unstructuredConvertableType),
 	}
 	if t.Kind() == reflect.Struct {
-		hints := map[string]*FieldCacheEntry{}
-		buildStructCacheEntry(t, hints, nil)
-		record.structFields = hints
+		entries := map[string]*FieldCacheEntry{}
+		buildStructCacheEntry(t, entries, nil)
+		record.structFields = entries
+		var fieldList []*FieldCacheEntry
+		for _, entry := range entries {
+			fieldList = append(fieldList, entry)
+		}
+		record.fieldList = fieldList
 	}
 
 	defaultReflectCache.update(t, record)
@@ -110,7 +117,7 @@ func buildStructCacheEntry(t reflect.Type, infos map[string]*FieldCacheEntry, fi
 			buildStructCacheEntry(field.Type, infos, append(fieldPath, field.Index))
 			continue
 		}
-		info := &FieldCacheEntry{isOmitEmpty: isOmitempty, fieldPath: append(fieldPath, field.Index)}
+		info := &FieldCacheEntry{jsonName: jsonName, isOmitEmpty: isOmitempty, fieldPath: append(fieldPath, field.Index)}
 		infos[jsonName] = info
 	}
 }
@@ -118,6 +125,10 @@ func buildStructCacheEntry(t reflect.Type, infos map[string]*FieldCacheEntry, fi
 // Fields returns a map of JSON field name to FieldCacheEntry for structs, or nil for non-structs.
 func (e TypeReflectCacheEntry) Fields() map[string]*FieldCacheEntry {
 	return e.structFields
+}
+
+func (e TypeReflectCacheEntry) FieldList() []*FieldCacheEntry {
+	return e.fieldList
 }
 
 // CanConvertToUnstructured returns true if this TypeReflectCacheEntry can convert values of its type to unstructured.

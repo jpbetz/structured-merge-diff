@@ -38,8 +38,26 @@ type Map interface {
 	// map. Returning false in the closure prematurely stops the
 	// iteration.
 	Iterate(func(key string, value Value) bool) bool
+	// Range returns a MapRange for iterating over the entry in the map.
+	Range() MapRange
 	// Length returns the number of items in the map.
 	Length() int
+}
+
+// MapRange represents a single iteration across the entry of a map.
+type MapRange interface {
+	// Next increments to the next entry in the range, if there is one, and returns true, or returns false if there are no more entry.
+	Next() bool
+	// Key returns the value of the current entry in the range. or panics if there is no current entry.
+	Key() string
+	// Value returns the value of the current entry in the range. or panics if there is no current entry.
+	// For efficiency, Value may reuse the values returned by previous Value calls. Callers should be careful avoid holding
+	// pointers to the value returned by Value() that escape the iteration loop since they become invalid once either
+	// Value() or Recycle() is called.
+	Value() Value
+	// Recycle returns a ListRange that is no longer needed. The value returned by Item() becomes invalid once this is
+	// called.
+	Recycle()
 }
 
 // MapLess compares two maps lexically.
@@ -50,16 +68,20 @@ func MapLess(lhs, rhs Map) bool {
 // MapCompare compares two maps lexically.
 func MapCompare(lhs, rhs Map) int {
 	lorder := make([]string, 0, lhs.Length())
-	lhs.Iterate(func(key string, _ Value) bool {
+	iter := lhs.Range()
+	defer iter.Recycle()
+	for iter.Next() {
+		key := iter.Key()
 		lorder = append(lorder, key)
-		return true
-	})
+	}
 	sort.Strings(lorder)
 	rorder := make([]string, 0, rhs.Length())
-	rhs.Iterate(func(key string, _ Value) bool {
+	iter = rhs.Range()
+	defer iter.Recycle()
+	for iter.Next() {
+		key := iter.Key()
 		rorder = append(rorder, key)
-		return true
-	})
+	}
 	sort.Strings(rorder)
 
 	i := 0
@@ -104,7 +126,11 @@ func MapEquals(lhs, rhs Map) bool {
 	if lhs.Length() != rhs.Length() {
 		return false
 	}
-	return lhs.Iterate(func(k string, v Value) bool {
+	iter := lhs.Range()
+	defer iter.Recycle()
+	for iter.Next() {
+		k := iter.Key()
+		v := iter.Value()
 		vo, ok := rhs.Get(k)
 		if !ok {
 			return false
@@ -114,6 +140,6 @@ func MapEquals(lhs, rhs Map) bool {
 		if !equal {
 			return false
 		}
-		return true
-	})
+	}
+	return true
 }

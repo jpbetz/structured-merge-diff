@@ -75,6 +75,32 @@ func (r mapReflect) Iterate(fn func(string, Value) bool) bool {
 	})
 }
 
+func (r mapReflect) Range() MapRange {
+	return &mapReflectRange{r.Value.MapRange(), newTempValuePooler()}
+}
+
+type mapReflectRange struct {
+	iter    *reflect.MapIter
+	pooler *tempValuePooler
+}
+
+func (r *mapReflectRange) Next() bool {
+	return r.iter.Next()
+}
+
+func (r *mapReflectRange) Key() string {
+	return r.iter.Key().String()
+}
+
+func (r *mapReflectRange) Value() Value {
+	return r.pooler.NewValueReflect(r.iter.Value())
+}
+
+func (r *mapReflectRange) Recycle() {
+	r.pooler.Recycle()
+}
+
+
 func eachMapEntry(val reflect.Value, fn func(string, reflect.Value) bool) bool {
 	iter := val.MapRange()
 	for iter.Next() {
@@ -109,11 +135,19 @@ func (r mapReflect) Equals(m Map) bool {
 	}
 	vp := newTempValuePooler()
 	defer vp.Recycle()
-	return m.Iterate(func(key string, value Value) bool {
+
+	iter := m.Range()
+	defer iter.Recycle()
+	for iter.Next() {
+		key := iter.Key()
+		value := iter.Value()
 		_, lhsVal, ok := r.get(key)
 		if !ok {
 			return false
 		}
-		return Equals(vp.NewValueReflect(lhsVal), value)
-	})
+		if !Equals(vp.NewValueReflect(lhsVal), value) {
+			return false
+		}
+	}
+	return true
 }

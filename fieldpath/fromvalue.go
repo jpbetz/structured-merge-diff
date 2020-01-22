@@ -69,13 +69,16 @@ func (w *objectWalker) walk() {
 		// If the map/struct were atomic, we'd break here, but we don't
 		// have a schema, so we can't tell.
 
-		w.value.AsMap().Iterate(func(k string, val value.Value) bool {
+		iter := w.value.AsMap().Range()
+		defer iter.Recycle()
+		for iter.Next() {
+			k := iter.Key()
+			val := iter.Value()
 			w2 := *w
 			w2.path = append(w.path, PathElement{FieldName: &k})
 			w2.value = val
 			w2.walk()
-			return true
-		})
+		}
 		return
 	}
 

@@ -16,6 +16,10 @@ limitations under the License.
 
 package value
 
+import (
+	"reflect"
+)
+
 type mapUnstructuredInterface map[interface{}]interface{}
 
 func (m mapUnstructuredInterface) Set(key string, val Value) {
@@ -56,6 +60,12 @@ func (m mapUnstructuredInterface) Iterate(fn func(key string, value Value) bool)
 		}
 	}
 	return true
+}
+
+
+func (m mapUnstructuredInterface) Range() MapRange {
+	vv := viPool.Get().(*valueUnstructured)
+	return &mapUnstructuredRange{reflect.ValueOf(m).MapRange(), vv}
 }
 
 func (m mapUnstructuredInterface) Length() int {
@@ -126,6 +136,35 @@ func (m mapUnstructuredString) Iterate(fn func(key string, value Value) bool) bo
 		}
 	}
 	return true
+}
+
+
+func (m mapUnstructuredString) Range() MapRange {
+	vv := viPool.Get().(*valueUnstructured)
+	return &mapUnstructuredRange{reflect.ValueOf(m).MapRange(), vv}
+}
+
+type mapUnstructuredRange struct {
+	iter    *reflect.MapIter
+	vv     *valueUnstructured
+}
+
+func (r *mapUnstructuredRange) Next() bool {
+	return r.iter.Next()
+}
+
+func (r *mapUnstructuredRange) Key() string {
+	// TODO(jpbetz): Avoid this cast
+	return r.iter.Key().Interface().(string)
+}
+
+func (r *mapUnstructuredRange) Value() Value {
+	r.vv.Value = r.iter.Value().Interface()
+	return r.vv
+}
+
+func (r *mapUnstructuredRange) Recycle() {
+	r.vv.Recycle()
 }
 
 func (m mapUnstructuredString) Length() int {

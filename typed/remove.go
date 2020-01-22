@@ -85,7 +85,11 @@ func (w *removingWalker) doMap(t *schema.Map) ValidationErrors {
 	}
 
 	newMap := map[string]interface{}{}
-	m.Iterate(func(k string, val value.Value) bool {
+	iter := m.Range()
+	defer iter.Recycle()
+	for iter.Next() {
+		k := iter.Key()
+		val := iter.Value()
 		pe := fieldpath.PathElement{FieldName: &k}
 		path, _ := fieldpath.MakePath(pe)
 		fieldType := t.ElementType
@@ -93,15 +97,14 @@ func (w *removingWalker) doMap(t *schema.Map) ValidationErrors {
 			fieldType = ft
 		} else {
 			if w.toRemove.Has(path) {
-				return true
+				continue
 			}
 		}
 		if subset := w.toRemove.WithPrefix(pe); !subset.Empty() {
 			val = removeItemsWithSchema(val, subset, w.schema, fieldType)
 		}
 		newMap[k] = val.Unstructured()
-		return true
-	})
+	}
 	if len(newMap) > 0 {
 		w.out = newMap
 	}

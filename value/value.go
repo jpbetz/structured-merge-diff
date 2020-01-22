@@ -210,10 +210,13 @@ func ToString(v Value) string {
 		return "[" + strings.Join(strs, ",") + "]"
 	case v.IsMap():
 		strs := []string{}
-		v.AsMap().Iterate(func(k string, v Value) bool {
+		iter := v.AsMap().Range()
+		defer iter.Recycle()
+		for iter.Next() {
+			k := iter.Key()
+			v := iter.Value()
 			strs = append(strs, fmt.Sprintf("%v=%v", k, ToString(v)))
-			return true
-		})
+		}
 		return strings.Join(strs, "")
 	}
 	// No field is set, on either objects.
