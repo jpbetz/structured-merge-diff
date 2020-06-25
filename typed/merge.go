@@ -55,19 +55,7 @@ type mergingWalker struct {
 // merge rules examine w.lhs and w.rhs (up to one of which may be nil) and
 // optionally set w.out. If lhs and rhs are both set, they will be of
 // comparable type.
-type mergeRule func(w *mergingWalker)
-
-var (
-	ruleKeepRHS = mergeRule(func(w *mergingWalker) {
-		if w.rhs != nil {
-			v := w.rhs.Unstructured()
-			w.out = &v
-		} else if w.lhs != nil {
-			v := w.lhs.Unstructured()
-			w.out = &v
-		}
-	})
-)
+type mergeRule func(w *mergingWalker) ValidationErrors
 
 // merge sets w.out.
 func (w *mergingWalker) merge(prefixFn func() string) (errs ValidationErrors) {
@@ -98,7 +86,7 @@ func (w *mergingWalker) merge(prefixFn func() string) (errs ValidationErrors) {
 
 // doLeaf should be called on leaves before descending into children, if there
 // will be a descent. It modifies w.inLeaf.
-func (w *mergingWalker) doLeaf() {
+func (w *mergingWalker) doLeaf() (errs ValidationErrors) {
 	if w.inLeaf {
 		// We're in a "big leaf", an atomic map or list. Ignore
 		// subsequent leaves.
@@ -107,7 +95,7 @@ func (w *mergingWalker) doLeaf() {
 	w.inLeaf = true
 
 	// We don't recurse into leaf fields for merging.
-	w.rule(w)
+	return w.rule(w)
 }
 
 func (w *mergingWalker) doScalar(t *schema.Scalar) (errs ValidationErrors) {
@@ -118,9 +106,7 @@ func (w *mergingWalker) doScalar(t *schema.Scalar) (errs ValidationErrors) {
 	}
 
 	// All scalars are leaf fields.
-	w.doLeaf()
-
-	return nil
+	return w.doLeaf()
 }
 
 func (w *mergingWalker) prepareDescent(pe fieldpath.PathElement, tr schema.TypeRef) *mergingWalker {
@@ -279,8 +265,7 @@ func (w *mergingWalker) doList(t *schema.List) (errs ValidationErrors) {
 	emptyPromoteToLeaf := (lhs == nil || lhs.Length() == 0) && (rhs == nil || rhs.Length() == 0)
 
 	if t.ElementRelationship == schema.Atomic || emptyPromoteToLeaf {
-		w.doLeaf()
-		return nil
+		return w.doLeaf()
 	}
 
 	if lhs == nil && rhs == nil {
@@ -339,8 +324,7 @@ func (w *mergingWalker) doMap(t *schema.Map) (errs ValidationErrors) {
 	emptyPromoteToLeaf := (lhs == nil || lhs.Empty()) && (rhs == nil || rhs.Empty())
 
 	if t.ElementRelationship == schema.Atomic || emptyPromoteToLeaf {
-		w.doLeaf()
-		return nil
+		return w.doLeaf()
 	}
 
 	if lhs == nil && rhs == nil {

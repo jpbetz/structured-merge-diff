@@ -18,6 +18,7 @@ package typed_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"sigs.k8s.io/structured-merge-diff/v3/typed"
@@ -47,134 +48,134 @@ func TestValidateDeducedType(t *testing.T) {
 func TestMergeDeduced(t *testing.T) {
 	triplets := []mergeTriplet{
 		{
-			`{"key":"foo","value":{}}`,
-			`{"key":"foo","value":1}`,
-			`{"key":"foo","value":1}`,
-		}, {
-			`{"key":"foo","value":1}`,
-			`{"key":"foo","value":{}}`,
-			`{"key":"foo","value":{}}`,
-		}, {
-			`{"key":"foo","value":null}`,
-			`{"key":"foo","value":{}}`,
-			`{"key":"foo","value":{}}`,
-		}, {
-			`{"key":"foo"}`,
-			`{"value":true}`,
-			`{"key":"foo","value":true}`,
-		}, {
-			`{}`,
-			`{"inner":{}}`,
-			`{"inner":{}}`,
-		}, {
-			`{}`,
-			`{"inner":null}`,
-			`{"inner":null}`,
-		}, {
-			`{"inner":null}`,
-			`{"inner":{}}`,
-			`{"inner":{}}`,
-		}, {
-			`{"inner":{}}`,
-			`{"inner":null}`,
-			`{"inner":null}`,
-		}, {
-			`{"inner":{}}`,
-			`{"inner":{}}`,
-			`{"inner":{}}`,
-		}, {
-			`{}`,
-			`{"inner":{}}`,
-			`{"inner":{}}`,
-		}, {
-			`{"inner":null}`,
-			`{"inner":{}}`,
-			`{"inner":{}}`,
-		}, {
-			`{"inner":{}}`,
-			`{"inner":null}`,
-			`{"inner":null}`,
-		}, {
-			`{}`,
-			`{"inner":[]}`,
-			`{"inner":[]}`,
-		}, {
-			`{"inner":null}`,
-			`{"inner":[]}`,
-			`{"inner":[]}`,
-		}, {
-			`{"inner":[]}`,
-			`{"inner":null}`,
-			`{"inner":null}`,
-		}, {
-			`{"inner":[]}`,
-			`{"inner":[]}`,
-			`{"inner":[]}`,
-		}, {
-			`{"numeric":1}`,
-			`{"numeric":3.14159}`,
-			`{"numeric":3.14159}`,
-		}, {
-			`{"numeric":3.14159}`,
-			`{"numeric":1}`,
-			`{"numeric":1}`,
-		}, {
-			`{"string":"aoeu"}`,
-			`{"bool":true}`,
-			`{"string":"aoeu","bool":true}`,
-		}, {
-			`{"atomic":["a","b","c"]}`,
-			`{"atomic":["a","b"]}`,
-			`{"atomic":["a","b"]}`,
-		}, {
-			`{"atomic":["a","b"]}`,
-			`{"atomic":["a","b","c"]}`,
-			`{"atomic":["a","b","c"]}`,
-		}, {
-			`{"atomic":["a","b","c"]}`,
-			`{"atomic":[]}`,
-			`{"atomic":[]}`,
-		}, {
-			`{"atomic":[]}`,
-			`{"atomic":["a","b","c"]}`,
-			`{"atomic":["a","b","c"]}`,
-		}, {
-			`{"":[true]}`,
-			`{"setBool":[false]}`,
-			`{"":[true],"setBool":[false]}`,
-		}, {
-			`{"atomic":[1,2,3.14159]}`,
-			`{"atomic":[1,2,3]}`,
-			`{"atomic":[1,2,3]}`,
-		}, {
-			`{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
-			`{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
-			`{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
-		}, {
-			`{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
-			`{"list":[{"key":"a","id":2,"value":{"a":"a"}}]}`,
-			`{"list":[{"key":"a","id":2,"value":{"a":"a"}}]}`,
-		}, {
-			`{"list":[{"key":"a","id":1},{"key":"b","id":1}]}`,
-			`{"list":[{"key":"a","id":1},{"key":"a","id":2}]}`,
-			`{"list":[{"key":"a","id":1},{"key":"a","id":2}]}`,
-		}, {
-			`{"atomicList":["a","a","a"]}`,
-			`{"atomicList":null}`,
-			`{"atomicList":null}`,
-		}, {
-			`{"atomicList":["a","b","c"]}`,
-			`{"atomicList":[]}`,
-			`{"atomicList":[]}`,
-		}, {
-			`{"atomicList":["a","a","a"]}`,
-			`{"atomicList":["a","a"]}`,
-			`{"atomicList":["a","a"]}`,
-		}, {
-			`{"a":1,"b":[null],"c":{"id":2,"list":["value"]}}`,
-			`{"a":2,"b":["value"],"c":{"name":"my_name"}}`,
-			`{"a":2,"b":["value"],"c":{"id":2,"list":["value"],"name":"my_name"}}`,
-		}}
+		lhs: `{"key":"foo","value":{}}`,
+		rhs: `{"key":"foo","value":1}`,
+		out: `{"key":"foo","value":1}`,
+	}, {
+		lhs: `{"key":"foo","value":1}`,
+		rhs: `{"key":"foo","value":{}}`,
+		out: `{"key":"foo","value":{}}`,
+	}, {
+		lhs: `{"key":"foo","value":null}`,
+		rhs: `{"key":"foo","value":{}}`,
+		out: `{"key":"foo","value":{}}`,
+	}, {
+		lhs: `{"key":"foo"}`,
+		rhs: `{"value":true}`,
+		out: `{"key":"foo","value":true}`,
+	}, {
+		lhs: `{}`,
+		rhs: `{"inner":{}}`,
+		out: `{"inner":{}}`,
+	}, {
+		lhs: `{}`,
+		rhs: `{"inner":null}`,
+		expectedErr: "null not allowed in applied object",
+	}, {
+		lhs: `{"inner":null}`,
+		rhs: `{"inner":{}}`,
+		out: `{"inner":{}}`,
+	}, {
+		lhs: `{"inner":{}}`,
+		rhs: `{"inner":null}`,
+		expectedErr: "null not allowed in applied object",
+	}, {
+		lhs: `{"inner":{}}`,
+		rhs: `{"inner":{}}`,
+		out: `{"inner":{}}`,
+	}, {
+		lhs: `{}`,
+		rhs: `{"inner":{}}`,
+		out: `{"inner":{}}`,
+	}, {
+		lhs: `{"inner":null}`,
+		rhs: `{"inner":{}}`,
+		out: `{"inner":{}}`,
+	}, {
+		lhs: `{"inner":{}}`,
+		rhs: `{"inner":null}`,
+		expectedErr: "null not allowed in applied object",
+	}, {
+		lhs: `{}`,
+		rhs: `{"inner":[]}`,
+		out: `{"inner":[]}`,
+	}, {
+		lhs: `{"inner":null}`,
+		rhs: `{"inner":[]}`,
+		out: `{"inner":[]}`,
+	}, {
+		lhs: `{"inner":[]}`,
+		rhs: `{"inner":null}`,
+		expectedErr: "null not allowed in applied object",
+	}, {
+		lhs: `{"inner":[]}`,
+		rhs: `{"inner":[]}`,
+		out: `{"inner":[]}`,
+	}, {
+		lhs: `{"numeric":1}`,
+		rhs: `{"numeric":3.14159}`,
+		out: `{"numeric":3.14159}`,
+	}, {
+		lhs: `{"numeric":3.14159}`,
+		rhs: `{"numeric":1}`,
+		out: `{"numeric":1}`,
+	}, {
+		lhs: `{"string":"aoeu"}`,
+		rhs: `{"bool":true}`,
+		out: `{"string":"aoeu","bool":true}`,
+	}, {
+		lhs: `{"atomic":["a","b","c"]}`,
+		rhs: `{"atomic":["a","b"]}`,
+		out: `{"atomic":["a","b"]}`,
+	}, {
+		lhs: `{"atomic":["a","b"]}`,
+		rhs: `{"atomic":["a","b","c"]}`,
+		out: `{"atomic":["a","b","c"]}`,
+	}, {
+		lhs: `{"atomic":["a","b","c"]}`,
+		rhs: `{"atomic":[]}`,
+		out: `{"atomic":[]}`,
+	}, {
+		lhs: `{"atomic":[]}`,
+		rhs: `{"atomic":["a","b","c"]}`,
+		out: `{"atomic":["a","b","c"]}`,
+	}, {
+		lhs: `{"":[true]}`,
+		rhs: `{"setBool":[false]}`,
+		out: `{"":[true],"setBool":[false]}`,
+	}, {
+		lhs: `{"atomic":[1,2,3.14159]}`,
+		rhs: `{"atomic":[1,2,3]}`,
+		out: `{"atomic":[1,2,3]}`,
+	}, {
+		lhs: `{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
+		rhs: `{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
+		out: `{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
+	}, {
+		lhs: `{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
+		rhs: `{"list":[{"key":"a","id":2,"value":{"a":"a"}}]}`,
+		out: `{"list":[{"key":"a","id":2,"value":{"a":"a"}}]}`,
+	}, {
+		lhs: `{"list":[{"key":"a","id":1},{"key":"b","id":1}]}`,
+		rhs: `{"list":[{"key":"a","id":1},{"key":"a","id":2}]}`,
+		out: `{"list":[{"key":"a","id":1},{"key":"a","id":2}]}`,
+	}, {
+		lhs: `{"atomicList":["a","a","a"]}`,
+		rhs: `{"atomicList":null}`,
+		expectedErr: "null not allowed in applied object",
+	}, {
+		lhs: `{"atomicList":["a","b","c"]}`,
+		rhs: `{"atomicList":[]}`,
+		out: `{"atomicList":[]}`,
+	}, {
+		lhs: `{"atomicList":["a","a","a"]}`,
+		rhs: `{"atomicList":["a","a"]}`,
+		out: `{"atomicList":["a","a"]}`,
+	}, {
+		lhs: `{"a":1,"b":[null],"c":{"id":2,"list":["value"]}}`,
+		rhs: `{"a":2,"b":["value"],"c":{"name":"my_name"}}`,
+		out: `{"a":2,"b":["value"],"c":{"id":2,"list":["value"],"name":"my_name"}}`,
+	}}
 
 	for i, triplet := range triplets {
 		triplet := triplet
@@ -198,6 +199,17 @@ func TestMergeDeduced(t *testing.T) {
 			}
 
 			got, err := lhs.Merge(rhs)
+
+			if triplet.expectedErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing '%s' but got no error", triplet.expectedErr)
+				}
+				if !strings.Contains(err.Error(), triplet.expectedErr) {
+					t.Fatalf("expected error containing '%s' but got %s", triplet.expectedErr, err.Error())
+				}
+				return
+			}
+
 			if err != nil {
 				t.Errorf("got validation errors: %v", err)
 			} else {

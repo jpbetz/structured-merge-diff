@@ -599,9 +599,9 @@ func TestMultipleAppliersNestedType(t *testing.T) {
 					Object: `
 						mapOfMapsRecursive:
 						  a:
-						    b:
+						    b: {}
 						  c:
-						    d:
+						    d: {}
 					`,
 					APIVersion: "v1",
 				},
@@ -609,9 +609,9 @@ func TestMultipleAppliersNestedType(t *testing.T) {
 					Manager: "apply-two",
 					Object: `
 						mapOfMapsRecursive:
-						  a:
+						  a: {}
 						  c:
-						    d:
+						    d: {}
 					`,
 					APIVersion: "v2",
 				},
@@ -621,10 +621,10 @@ func TestMultipleAppliersNestedType(t *testing.T) {
 						mapOfMapsRecursive:
 						  a:
 						    b:
-						      c:
+						      c: {}
 						  c:
 						    d:
-						      e:
+						      e: {}
 					`,
 					APIVersion: "v3",
 				},
@@ -635,11 +635,11 @@ func TestMultipleAppliersNestedType(t *testing.T) {
 						  a:
 						    b:
 						      c:
-						        d:
+						        d: {}
 						  c:
 						    d:
 						      e:
-						        f:
+						        f: {}
 					`,
 					APIVersion: "v2",
 				},
@@ -651,12 +651,12 @@ func TestMultipleAppliersNestedType(t *testing.T) {
 						    b:
 						      c:
 						        d:
-						          e:
+						          e: {}
 						  c:
 						    d:
 						      e:
 						        f:
-						          g:
+						          g: {}
 					`,
 					APIVersion: "v3",
 				},
@@ -667,7 +667,7 @@ func TestMultipleAppliersNestedType(t *testing.T) {
 					`,
 					APIVersion: "v4",
 				},
-			},
+			}, // TODO(jpetz): Why do we need a {} on the object?
 			Object: `
 				mapOfMapsRecursive:
 				  a:
@@ -675,7 +675,7 @@ func TestMultipleAppliersNestedType(t *testing.T) {
 				    d:
 				      e:
 				        f:
-				          g:
+				          g: {}
 			`,
 			APIVersion: "v1",
 			Managed: fieldpath.ManagedFields{
@@ -724,18 +724,18 @@ func TestMultipleAppliersDeducedType(t *testing.T) {
 					Manager: "apply-one",
 					Object: `
 						a:
-						  b:
+						  b: {}
 						c:
-						  d:
+						  d: {}
 					`,
 					APIVersion: "v1",
 				},
 				Apply{
 					Manager: "apply-two",
 					Object: `
-						a:
+						a: {}
 						c:
-						  d:
+						  d: {}
 					`,
 					APIVersion: "v2",
 				},
@@ -744,10 +744,10 @@ func TestMultipleAppliersDeducedType(t *testing.T) {
 					Object: `
 						a:
 						  b:
-						    c:
+						    c: {}
 						c:
 						  d:
-						    e:
+						    e: {}
 					`,
 					APIVersion: "v3",
 				},
@@ -757,11 +757,11 @@ func TestMultipleAppliersDeducedType(t *testing.T) {
 						a:
 						  b:
 						    c:
-						      d:
+						      d: {}
 						c:
 						  d:
 						    e:
-						      f:
+						      f: {}
 					`,
 					APIVersion: "v2",
 				},
@@ -772,12 +772,12 @@ func TestMultipleAppliersDeducedType(t *testing.T) {
 						  b:
 						    c:
 						      d:
-						        e:
+						        e: {}
 						c:
 						  d:
 						    e:
 						      f:
-						        g:
+						        g: {}
 					`,
 					APIVersion: "v3",
 				},
@@ -793,7 +793,7 @@ func TestMultipleAppliersDeducedType(t *testing.T) {
 				  d:
 				    e:
 				      f:
-				        g:
+				        g: {}
 			`,
 			APIVersion: "v1",
 			Managed: fieldpath.ManagedFields{
@@ -843,9 +843,9 @@ func TestMultipleAppliersRealConversion(t *testing.T) {
 					Object: `
 						mapOfMapsRecursive:
 						  a:
-						    b:
+						    b: {}
 						  c:
-						    d:
+						    d: {}
 					`,
 					APIVersion: "v1",
 				},
@@ -853,9 +853,9 @@ func TestMultipleAppliersRealConversion(t *testing.T) {
 					Manager: "apply-two",
 					Object: `
 						mapOfMapsRecursive:
-						  aa:
+						  aa: {}
 						  cc:
-						    dd:
+						    dd: {}
 					`,
 					APIVersion: "v2",
 				},
@@ -866,11 +866,11 @@ func TestMultipleAppliersRealConversion(t *testing.T) {
 						  aaa:
 						    bbb:
 						      ccc:
-						        ddd:
+						        ddd: {}
 						  ccc:
 						    ddd:
 						      eee:
-						        fff:
+						        fff: {}
 					`,
 					APIVersion: "v3",
 				},
@@ -919,7 +919,7 @@ func TestMultipleAppliersRealConversion(t *testing.T) {
 						mapOfMapsRecursive:
 						  a:
 						    b:
-						      c:
+						      c: {}
 					`,
 					APIVersion: "v1",
 				},
@@ -928,9 +928,9 @@ func TestMultipleAppliersRealConversion(t *testing.T) {
 					Object: `
 						mapOfMapsRecursive:
 						  aa:
-						    bb:
+						    bb: {}
 						  cc:
-						    dd:
+						    dd: {}
 					`,
 					APIVersion: "v2",
 				},
@@ -938,8 +938,8 @@ func TestMultipleAppliersRealConversion(t *testing.T) {
 					Manager: "apply",
 					Object: `
 						mapOfMapsRecursive:
-						  aaa:
-						  ccc:
+						  aaa: {}
+						  ccc: {}
 					`,
 					APIVersion: "v3",
 				},

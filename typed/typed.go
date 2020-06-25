@@ -99,7 +99,7 @@ func (tv TypedValue) ToFieldSet() (*fieldpath.Set, error) {
 // match), or an error will be returned. Validation errors will be returned if
 // the objects don't conform to the schema.
 func (tv TypedValue) Merge(pso *TypedValue) (*TypedValue, error) {
-	return merge(&tv, pso, ruleKeepRHS, nil)
+	return merge(&tv, pso, applyMergeRule, nil)
 }
 
 // Compare compares the two objects. See the comments on the `Comparison`
@@ -114,7 +114,7 @@ func (tv TypedValue) Compare(rhs *TypedValue) (c *Comparison, err error) {
 		Modified: fieldpath.NewSet(),
 		Added:    fieldpath.NewSet(),
 	}
-	_, err = merge(&tv, rhs, func(w *mergingWalker) {
+	_, err = merge(&tv, rhs, func(w *mergingWalker) ValidationErrors {
 		if w.lhs == nil {
 			c.Added.Insert(w.path)
 		} else if w.rhs == nil {
@@ -124,12 +124,14 @@ func (tv TypedValue) Compare(rhs *TypedValue) (c *Comparison, err error) {
 			// Need to implement equality check on the value type.
 			c.Modified.Insert(w.path)
 		}
-	}, func(w *mergingWalker) {
+		return nil
+	}, func(w *mergingWalker) ValidationErrors {
 		if w.lhs == nil {
 			c.Added.Insert(w.path)
 		} else if w.rhs == nil {
 			c.Removed.Insert(w.path)
 		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -156,7 +158,7 @@ func (tv TypedValue) RemoveItems(items *fieldpath.Set) *TypedValue {
 // Please note: union behavior isn't finalized yet and this is still experimental.
 func (tv TypedValue) NormalizeUnions(new *TypedValue) (*TypedValue, error) {
 	var errs ValidationErrors
-	var normalizeFn = func(w *mergingWalker) {
+	var normalizeFn = func(w *mergingWalker) ValidationErrors {
 		if w.rhs != nil {
 			v := w.rhs.Unstructured()
 			w.out = &v
@@ -164,8 +166,9 @@ func (tv TypedValue) NormalizeUnions(new *TypedValue) (*TypedValue, error) {
 		if err := normalizeUnions(w); err != nil {
 			errs = append(errs, errorf(err.Error())...)
 		}
+		return nil
 	}
-	out, mergeErrs := merge(&tv, new, func(w *mergingWalker) {}, normalizeFn)
+	out, mergeErrs := merge(&tv, new, noopMergeRule, normalizeFn)
 	if mergeErrs != nil {
 		errs = append(errs, mergeErrs.(ValidationErrors)...)
 	}
@@ -182,7 +185,7 @@ func (tv TypedValue) NormalizeUnions(new *TypedValue) (*TypedValue, error) {
 // Please note: union behavior isn't finalized yet and this is still experimental.
 func (tv TypedValue) NormalizeUnionsApply(new *TypedValue) (*TypedValue, error) {
 	var errs ValidationErrors
-	var normalizeFn = func(w *mergingWalker) {
+	var normalizeFn = func(w *mergingWalker) ValidationErrors {
 		if w.rhs != nil {
 			v := w.rhs.Unstructured()
 			w.out = &v
@@ -190,8 +193,9 @@ func (tv TypedValue) NormalizeUnionsApply(new *TypedValue) (*TypedValue, error) 
 		if err := normalizeUnionsApply(w); err != nil {
 			errs = append(errs, errorf(err.Error())...)
 		}
+		return nil
 	}
-	out, mergeErrs := merge(&tv, new, func(w *mergingWalker) {}, normalizeFn)
+	out, mergeErrs := merge(&tv, new, noopMergeRule, normalizeFn)
 	if mergeErrs != nil {
 		errs = append(errs, mergeErrs.(ValidationErrors)...)
 	}
@@ -205,6 +209,33 @@ func (tv TypedValue) Empty() *TypedValue {
 	tv.value = value.NewValueInterface(nil)
 	return &tv
 }
+
+var (
+	noopMergeRule = func(w *mergingWalker) ValidationErrors { return nil }
+	applyMergeRule = mergeRule(func(w *mergingWalker) (errs ValidationErrors) {
+		if w.rhs != nil {
+			// Since null can be interpreted to mean that a field has been omitted and should be
+			// defaulted, it is not allowed in applied configurations.
+			// This ensures the an applied configuration accurately reflects the actual state of
+			// the fields it contains. If the applier expects a defaulted value to be set to
+			// a particular value, they must include the field and the expected value in
+			// their applied configuration.
+			// This also means that for optional fields that do not have defaults, we to not allow
+			// null either. This is disallowed primarily because it is difficult to know if the
+			// optional field will be defaulted or not (multiple versions and schema evolution make
+			// this particularly challenging).
+			if w.rhs.IsNull() {
+				return errorf("rhs: null not allowed in applied object configuration")
+			}
+			v := w.rhs.Unstructured()
+			w.out = &v
+		} else if w.lhs != nil {
+			v := w.lhs.Unstructured()
+			w.out = &v
+		}
+		return errs
+	})
+)
 
 var mwPool = sync.Pool{
 	New: func() interface{} { return &mergingWalker{} },

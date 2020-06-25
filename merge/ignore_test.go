@@ -157,9 +157,9 @@ func TestIgnoredFieldsUsesVersions(t *testing.T) {
 					Object: `
 						mapOfMapsRecursive:
 						  a:
-						    b:
+						    b: {}
 						  c:
-						    d:
+						    d: {}
 					`,
 					APIVersion: "v1",
 				},
@@ -167,16 +167,16 @@ func TestIgnoredFieldsUsesVersions(t *testing.T) {
 					Manager: "apply-two",
 					Object: `
 						mapOfMapsRecursive:
-						  aa:
+						  aa: {}
 						  cc:
-						    dd:
+						    dd: {}
 					`,
 					APIVersion: "v2",
 				},
 				Apply{
 					Manager: "apply-one",
 					Object: `
-						mapOfMapsRecursive:
+						mapOfMapsRecursive: {}
 					`,
 					APIVersion: "v4",
 				},
@@ -280,9 +280,9 @@ func TestIgnoredFieldsUsesVersions(t *testing.T) {
 					Object: `
 						mapOfMapsRecursive:
 						  a: 
-						    b:
+						    b: {}
 						  c:
-						    d:
+						    d: {}
 					`,
 					APIVersion: "v1",
 				},
@@ -291,9 +291,9 @@ func TestIgnoredFieldsUsesVersions(t *testing.T) {
 					Object: `
 						mapOfMapsRecursive:
 						  a: 
-						    b:
+						    b: {}
 						  c:
-						    e:
+						    e: {}
 					`,
 					APIVersion: "v2",
 				},

@@ -466,7 +466,7 @@ func TestUpdateNestedType(t *testing.T) {
 						mapOfMapsRecursive:
 						  a:
 						    b:
-						      c:
+						      c: {}
 					`,
 					APIVersion: "v1",
 				},
@@ -476,7 +476,7 @@ func TestUpdateNestedType(t *testing.T) {
 						mapOfMapsRecursive:
 						  a:
 						    d:
-						      c:
+						      c: {}
 					`,
 					APIVersion: "v1",
 				},
@@ -485,7 +485,7 @@ func TestUpdateNestedType(t *testing.T) {
 				mapOfMapsRecursive:
 				  a:
 				    d:
-				      c:
+				      c: {}
 			`,
 			APIVersion: "v1",
 			Managed: fieldpath.ManagedFields{

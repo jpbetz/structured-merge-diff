@@ -18,6 +18,7 @@ package typed_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"sigs.k8s.io/structured-merge-diff/v3/typed"
@@ -35,6 +36,7 @@ type mergeTriplet struct {
 	lhs typed.YAMLObject
 	rhs typed.YAMLObject
 	out typed.YAMLObject
+	expectedErr string
 }
 
 var mergeCases = []mergeTestCase{{
@@ -62,25 +64,25 @@ var mergeCases = []mergeTestCase{{
     elementRelationship: atomic
 `,
 	triplets: []mergeTriplet{{
-		`{"key":"foo","value":{}}`,
-		`{"key":"foo","value":1}`,
-		`{"key":"foo","value":1}`,
+		lhs: `{"key":"foo","value":{}}`,
+		rhs: `{"key":"foo","value":1}`,
+		out: `{"key":"foo","value":1}`,
 	}, {
-		`{"key":"foo","value":{}}`,
-		`{"key":"foo","value":1}`,
-		`{"key":"foo","value":1}`,
+		lhs: `{"key":"foo","value":{}}`,
+		rhs: `{"key":"foo","value":1}`,
+		out: `{"key":"foo","value":1}`,
 	}, {
-		`{"key":"foo","value":1}`,
-		`{"key":"foo","value":{}}`,
-		`{"key":"foo","value":{}}`,
+		lhs: `{"key":"foo","value":1}`,
+		rhs: `{"key":"foo","value":{}}`,
+		out: `{"key":"foo","value":{}}`,
 	}, {
-		`{"key":"foo","value":null}`,
-		`{"key":"foo","value":{}}`,
-		`{"key":"foo","value":{}}`,
+		lhs: `{"key":"foo","value":null}`,
+		rhs: `{"key":"foo","value":{}}`,
+		out: `{"key":"foo","value":{}}`,
 	}, {
-		`{"key":"foo"}`,
-		`{"value":true}`,
-		`{"key":"foo","value":true}`,
+		lhs: `{"key":"foo"}`,
+		rhs: `{"value":true}`,
+		out: `{"key":"foo","value":true}`,
 	}},
 }, {
 	name:         "null/empty map",
@@ -106,25 +108,25 @@ var mergeCases = []mergeTestCase{{
     elementRelationship: atomic
 `,
 	triplets: []mergeTriplet{{
-		`{}`,
-		`{"inner":{}}`,
-		`{"inner":{}}`,
+		lhs: `{}`,
+		rhs: `{"inner":{}}`,
+		out: `{"inner":{}}`,
 	}, {
-		`{}`,
-		`{"inner":null}`,
-		`{"inner":null}`,
+		lhs: `{}`,
+		rhs: `{"inner":null}`,
+		expectedErr: "null not allowed in applied object",
 	}, {
-		`{"inner":null}`,
-		`{"inner":{}}`,
-		`{"inner":{}}`,
+		lhs: `{"inner":null}`,
+		rhs: `{"inner":{}}`,
+		out: `{"inner":{}}`,
 	}, {
-		`{"inner":{}}`,
-		`{"inner":null}`,
-		`{"inner":null}`,
+		lhs: `{"inner":{}}`,
+		rhs: `{"inner":null}`,
+		expectedErr: "null not allowed in applied object",
 	}, {
-		`{"inner":{}}`,
-		`{"inner":{}}`,
-		`{"inner":{}}`,
+		lhs: `{"inner":{}}`,
+		rhs: `{"inner":{}}`,
+		out: `{"inner":{}}`,
 	}},
 }, {
 	name:         "null/empty struct",
@@ -152,25 +154,25 @@ var mergeCases = []mergeTestCase{{
     elementRelationship: atomic
 `,
 	triplets: []mergeTriplet{{
-		`{}`,
-		`{"inner":{}}`,
-		`{"inner":{}}`,
+		lhs: `{}`,
+		rhs: `{"inner":{}}`,
+		out: `{"inner":{}}`,
 	}, {
-		`{}`,
-		`{"inner":null}`,
-		`{"inner":null}`,
+		lhs: `{}`,
+		rhs: `{"inner":null}`,
+		expectedErr: "null not allowed in applied object",
 	}, {
-		`{"inner":null}`,
-		`{"inner":{}}`,
-		`{"inner":{}}`,
+		lhs: `{"inner":null}`,
+		rhs: `{"inner":{}}`,
+		out: `{"inner":{}}`,
 	}, {
-		`{"inner":{}}`,
-		`{"inner":null}`,
-		`{"inner":null}`,
+		lhs: `{"inner":{}}`,
+		rhs: `{"inner":null}`,
+		expectedErr: "null not allowed in applied object",
 	}, {
-		`{"inner":{}}`,
-		`{"inner":{}}`,
-		`{"inner":{}}`,
+		lhs: `{"inner":{}}`,
+		rhs: `{"inner":{}}`,
+		out: `{"inner":{}}`,
 	}},
 }, {
 	name:         "null/empty list",
@@ -197,25 +199,25 @@ var mergeCases = []mergeTestCase{{
     elementRelationship: atomic
 `,
 	triplets: []mergeTriplet{{
-		`{}`,
-		`{"inner":[]}`,
-		`{"inner":[]}`,
+		lhs: `{}`,
+		rhs: `{"inner":[]}`,
+		out: `{"inner":[]}`,
 	}, {
-		`{}`,
-		`{"inner":null}`,
-		`{"inner":null}`,
+		lhs: `{}`,
+		rhs: `{"inner":null}`,
+		expectedErr: "null not allowed in applied object",
 	}, {
-		`{"inner":null}`,
-		`{"inner":[]}`,
-		`{"inner":[]}`,
+		lhs: `{"inner":null}`,
+		rhs: `{"inner":[]}`,
+		out: `{"inner":[]}`,
 	}, {
-		`{"inner":[]}`,
-		`{"inner":null}`,
-		`{"inner":null}`,
+		lhs: `{"inner":[]}`,
+		rhs: `{"inner":null}`,
+		expectedErr: "null not allowed in applied object",
 	}, {
-		`{"inner":[]}`,
-		`{"inner":[]}`,
-		`{"inner":[]}`,
+		lhs: `{"inner":[]}`,
+		rhs: `{"inner":[]}`,
+		out: `{"inner":[]}`,
 	}},
 }, {
 	name:         "struct grab bag",
@@ -253,42 +255,42 @@ var mergeCases = []mergeTestCase{{
           elementRelationship: associative
 `,
 	triplets: []mergeTriplet{{
-		`{"numeric":1}`,
-		`{"numeric":3.14159}`,
-		`{"numeric":3.14159}`,
+		lhs: `{"numeric":1}`,
+		rhs: `{"numeric":3.14159}`,
+		out: `{"numeric":3.14159}`,
 	}, {
-		`{"numeric":3.14159}`,
-		`{"numeric":1}`,
-		`{"numeric":1}`,
+		lhs: `{"numeric":3.14159}`,
+		rhs: `{"numeric":1}`,
+		out: `{"numeric":1}`,
 	}, {
-		`{"string":"aoeu"}`,
-		`{"bool":true}`,
-		`{"string":"aoeu","bool":true}`,
+		lhs: `{"string":"aoeu"}`,
+		rhs: `{"bool":true}`,
+		out: `{"string":"aoeu","bool":true}`,
 	}, {
-		`{"setStr":["a","b","c"]}`,
-		`{"setStr":["a","b"]}`,
-		`{"setStr":["a","b","c"]}`,
+		lhs: `{"setStr":["a","b","c"]}`,
+		rhs: `{"setStr":["a","b"]}`,
+		out: `{"setStr":["a","b","c"]}`,
 	}, {
-		`{"setStr":["a","b"]}`,
-		`{"setStr":["a","b","c"]}`,
-		`{"setStr":["a","b","c"]}`,
+		lhs: `{"setStr":["a","b"]}`,
+		rhs: `{"setStr":["a","b","c"]}`,
+		out: `{"setStr":["a","b","c"]}`,
 	}, {
-		`{"setStr":["a","b","c"]}`,
-		`{"setStr":[]}`,
-		`{"setStr":["a","b","c"]}`,
+		lhs: `{"setStr":["a","b","c"]}`,
+		rhs: `{"setStr":[]}`,
+		out: `{"setStr":["a","b","c"]}`,
 	}, {
-		`{"setStr":[]}`,
-		`{"setStr":["a","b","c"]}`,
-		`{"setStr":["a","b","c"]}`,
+		lhs: `{"setStr":[]}`,
+		rhs: `{"setStr":["a","b","c"]}`,
+		out: `{"setStr":["a","b","c"]}`,
 	}, {
-		`{"setBool":[true]}`,
-		`{"setBool":[false]}`,
-		`{"setBool":[true,false]}`,
+		lhs: `{"setBool":[true]}`,
+		rhs: `{"setBool":[false]}`,
+		out: `{"setBool":[true,false]}`,
 	}, {
-		`{"setNumeric":[1,2,3.14159]}`,
-		`{"setNumeric":[1,2,3]}`,
+		lhs:`{"setNumeric":[1,2,3.14159]}`,
+		rhs: `{"setNumeric":[1,2,3]}`,
 		// KNOWN BUG: this order is wrong
-		`{"setNumeric":[1,2,3.14159,3]}`,
+		out: `{"setNumeric":[1,2,3.14159,3]}`,
 	}},
 }, {
 	name:         "associative list",
@@ -340,29 +342,29 @@ var mergeCases = []mergeTestCase{{
       scalar: string
 `,
 	triplets: []mergeTriplet{{
-		`{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
-		`{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
-		`{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
+		lhs: `{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
+		rhs: `{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
+		out: `{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
 	}, {
-		`{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
-		`{"list":[{"key":"a","id":2,"value":{"a":"a"}}]}`,
-		`{"list":[{"key":"a","id":1,"value":{"a":"a"}},{"key":"a","id":2,"value":{"a":"a"}}]}`,
+		lhs: `{"list":[{"key":"a","id":1,"value":{"a":"a"}}]}`,
+		rhs: `{"list":[{"key":"a","id":2,"value":{"a":"a"}}]}`,
+		out: `{"list":[{"key":"a","id":1,"value":{"a":"a"}},{"key":"a","id":2,"value":{"a":"a"}}]}`,
 	}, {
-		`{"list":[{"key":"a","id":1},{"key":"b","id":1}]}`,
-		`{"list":[{"key":"a","id":1},{"key":"a","id":2}]}`,
-		`{"list":[{"key":"a","id":1},{"key":"b","id":1},{"key":"a","id":2}]}`,
+		lhs: `{"list":[{"key":"a","id":1},{"key":"b","id":1}]}`,
+		rhs: `{"list":[{"key":"a","id":1},{"key":"a","id":2}]}`,
+		out: `{"list":[{"key":"a","id":1},{"key":"b","id":1},{"key":"a","id":2}]}`,
 	}, {
-		`{"atomicList":["a","a","a"]}`,
-		`{"atomicList":null}`,
-		`{"atomicList":null}`,
+		lhs: `{"atomicList":["a","a","a"]}`,
+		rhs: `{"atomicList":null}`,
+		expectedErr: "null not allowed in applied object",
 	}, {
-		`{"atomicList":["a","b","c"]}`,
-		`{"atomicList":[]}`,
-		`{"atomicList":[]}`,
+		lhs: `{"atomicList":["a","b","c"]}`,
+		rhs: `{"atomicList":[]}`,
+		out: `{"atomicList":[]}`,
 	}, {
-		`{"atomicList":["a","a","a"]}`,
-		`{"atomicList":["a","a"]}`,
-		`{"atomicList":["a","a"]}`,
+		lhs: `{"atomicList":["a","a","a"]}`,
+		rhs: `{"atomicList":["a","a"]}`,
+		out: `{"atomicList":["a","a"]}`,
 	}},
 }}
 
@@ -394,6 +396,17 @@ func (tt mergeTestCase) test(t *testing.T) {
 			}
 
 			got, err := lhs.Merge(rhs)
+
+			if triplet.expectedErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing '%s' but got no error", triplet.expectedErr)
+				}
+				if !strings.Contains(err.Error(), triplet.expectedErr) {
+					t.Fatalf("expected error containing '%s' but got %s", triplet.expectedErr, err.Error())
+				}
+				return
+			}
+
 			if err != nil {
 				t.Errorf("got validation errors: %v", err)
 			} else {
