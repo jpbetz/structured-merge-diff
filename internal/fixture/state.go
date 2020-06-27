@@ -478,7 +478,7 @@ func (tc TestCase) TestWithConverter(parser Parser, converter merge.Converter) e
 			return fmt.Errorf("failed to compare live with config: %v", err)
 		}
 		if !comparison.IsSame() {
-			return fmt.Errorf("expected live and config to be the same:\n%v\nConfig: %v\n", comparison, value.ToString(state.Live.AsValue()))
+			return fmt.Errorf("expected live and config to be the same at %v:\n%v\nConfig:\n%v\nLive: %v\n", tc.APIVersion, comparison, tc.Object, value.ToString(state.Live.AsValue()))
 		}
 	}
 

@@ -347,9 +347,10 @@ func TestMultipleAppliersFieldUnsetting(t *testing.T) {
 	}
 }
 
+// TODO(jpbetz): Review actual conversion code and see what defaulting it does...
 func testMultipleAppliersFieldUnsetting(t *testing.T, v1, v2, v3 fieldpath.APIVersion) {
 	tests := map[string]TestCase{
-		"unset_scalar_sole_owner": {
+		"unset_scalar_remove": {
 			Ops: []Operation{
 				Apply{
 					Manager:    "apply-one",
@@ -373,7 +374,7 @@ func testMultipleAppliersFieldUnsetting(t *testing.T, v1, v2, v3 fieldpath.APIVe
 				struct:
 				  name: a
 			`,
-			APIVersion: v3,
+			APIVersion: "v1",
 			Managed: fieldpath.ManagedFields{
 				"apply-one": fieldpath.NewVersionedSet(
 					_NS(
@@ -384,7 +385,7 @@ func testMultipleAppliersFieldUnsetting(t *testing.T, v1, v2, v3 fieldpath.APIVe
 				),
 			},
 		},
-		"unset_scalar_shared_owner": {
+		"unset_scalar_transfer_ownership": {
 			Ops: []Operation{
 				Apply{
 					Manager:    "apply-one",
@@ -416,8 +417,8 @@ func testMultipleAppliersFieldUnsetting(t *testing.T, v1, v2, v3 fieldpath.APIVe
 				struct:
 				  name: a
 				  scalarField_%s: a
-			`, v3)),
-			APIVersion: v3,
+			`, "v1")),
+			APIVersion: "v1",
 			Managed: fieldpath.ManagedFields{
 				"apply-one": fieldpath.NewVersionedSet(
 					_NS(
@@ -435,7 +436,7 @@ func testMultipleAppliersFieldUnsetting(t *testing.T, v1, v2, v3 fieldpath.APIVe
 				),
 			},
 		},
-		"unset_complex_sole_owner": {
+		"unset_complex_remove": {
 			Ops: []Operation{
 				Apply{
 					Manager:    "apply-one",
@@ -460,8 +461,8 @@ func testMultipleAppliersFieldUnsetting(t *testing.T, v1, v2, v3 fieldpath.APIVe
 				struct:
 				  name: a
 				  complexField_%s: null
-			`, v3)),
-			APIVersion: v3,
+			`, "v1")),
+			APIVersion: "v1",
 			Managed: fieldpath.ManagedFields{
 				"apply-one": fieldpath.NewVersionedSet(
 					_NS(
@@ -472,7 +473,7 @@ func testMultipleAppliersFieldUnsetting(t *testing.T, v1, v2, v3 fieldpath.APIVe
 				),
 			},
 		},
-		"unset_complex_shared_owner": {
+		"unset_complex_transfer_ownership": {
 			Ops: []Operation{
 				Apply{
 					Manager:    "apply-one",
@@ -507,8 +508,8 @@ func testMultipleAppliersFieldUnsetting(t *testing.T, v1, v2, v3 fieldpath.APIVe
 				  name: a
 				  complexField_%s:
 				    name: b
-			`, v3)),
-			APIVersion: v3,
+			`, "v1")),
+			APIVersion: "v1",
 			Managed: fieldpath.ManagedFields{
 				"apply-one": fieldpath.NewVersionedSet(
 					_NS(
@@ -528,7 +529,38 @@ func testMultipleAppliersFieldUnsetting(t *testing.T, v1, v2, v3 fieldpath.APIVe
 		},
 	}
 
-	converter := renamingConverter{structMultiversionParser}
+	converter := renamingConverter{structMultiversionParser, func(v *typed.TypedValue, version fieldpath.APIVersion) (*typed.TypedValue, error) {
+		if *v.TypeRef().NamedType != string(version) {
+			return v, nil
+		}
+		val := v.AsValue()
+		if val == nil || !val.IsMap() {
+			return v, nil
+		}
+		s, ok := val.AsMap().Get("struct")
+		if !ok {
+			return v, nil
+		}
+		if s == nil || !s.IsMap() {
+			return v, nil
+		}
+		m := s.AsMap()
+		field := fmt.Sprintf("scalarField_%s", version)
+
+		switch version {
+		case "v3":
+			if !m.Has(field) {
+				m.Set(field, value.NewValueInterface("default"))
+			}
+		case "v1", "v2":
+			if v, ok := m.Get(field); ok && v.Unstructured() == "default" {
+				m.Delete(field)
+			}
+		default:
+			return v, nil
+		}
+		return v, nil
+	}}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			if err := test.TestWithConverter(structMultiversionParser, converter); err != nil {
@@ -1344,13 +1376,18 @@ func (r repeatingConverter) IsMissingVersionError(err error) bool {
 // should exist in the schema of the provided parser.
 type renamingConverter struct {
 	parser Parser
+	defaulterFunc func(v *typed.TypedValue, version fieldpath.APIVersion) (*typed.TypedValue, error)
 }
 
 // Convert implements merge.Converter
 func (r renamingConverter) Convert(v *typed.TypedValue, version fieldpath.APIVersion) (*typed.TypedValue, error) {
 	inVersion := fieldpath.APIVersion(*v.TypeRef().NamedType)
 	outType := r.parser.Type(string(version))
-	return outType.FromUnstructured(renameFields(v.AsValue(), string(inVersion), string(version)))
+	converted, err := outType.FromUnstructured(renameFields(v.AsValue(), string(inVersion), string(version)))
+	if err != nil {
+		return nil, err
+	}
+	return r.defaulterFunc(converted, version)
 }
 
 func renameFields(v value.Value, oldSuffix, newSuffix string) interface{} {
