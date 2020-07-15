@@ -85,6 +85,9 @@ func validateScalar(t *schema.Scalar, v value.Value, prefix string) (errs Valida
 	if v == nil {
 		return nil
 	}
+	if isTombstone(v) {
+		return nil
+	}
 	if v.IsNull() {
 		return nil
 	}

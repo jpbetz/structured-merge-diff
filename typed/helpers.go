@@ -159,6 +159,9 @@ func listValue(a value.Allocator, val value.Value) (value.List, error) {
 		// Null is a valid list.
 		return nil, nil
 	}
+	if isTombstone(val) { // TODO(jpbetz): Validate that there are no non-key fields. Only do this if some flag is set allowing apply configuration annotations.
+		return nil, nil
+	}
 	if !val.IsList() {
 		return nil, fmt.Errorf("expected list, got %v", val)
 	}
@@ -172,6 +175,9 @@ func mapValue(a value.Allocator, val value.Value) (value.Map, error) {
 	}
 	if val.IsNull() {
 		// Null is a valid map.
+		return nil, nil
+	}
+	if isTombstone(val) { // TODO(jpbetz): Validate that there are no non-key fields. Only do this if some flag is set allowing apply configuration annotations.
 		return nil, nil
 	}
 	if !val.IsMap() {

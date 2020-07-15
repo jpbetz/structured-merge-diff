@@ -60,6 +60,9 @@ type mergeRule func(w *mergingWalker)
 var (
 	ruleKeepRHS = mergeRule(func(w *mergingWalker) {
 		if w.rhs != nil {
+			if isTombstone(w.rhs) {
+				return // omit the value.
+			}
 			v := w.rhs.Unstructured()
 			w.out = &v
 		} else if w.lhs != nil {
@@ -69,11 +72,22 @@ var (
 	})
 )
 
+func isTombstone(v value.Value) bool {
+	return v != nil && v.IsMap() && isMapTombstone(v.AsMap())
+}
+
+func isMapTombstone(m value.Map) bool {
+	return m.Has("x-kubernetes-apply-state")
+}
+
 // merge sets w.out.
 func (w *mergingWalker) merge(prefixFn func() string) (errs ValidationErrors) {
 	if w.lhs == nil && w.rhs == nil {
 		// check this condidition here instead of everywhere below.
 		return errorf("at least one of lhs and rhs must be provided")
+	}
+	if w.rhs != nil && isTombstone(w.rhs) {
+		return
 	}
 	a, ok := w.schema.Resolve(w.typeRef)
 	if !ok {
@@ -87,6 +101,7 @@ func (w *mergingWalker) merge(prefixFn func() string) (errs ValidationErrors) {
 	} else {
 		w2 := *w
 		errs = append(errs, handleAtom(alhs, w.typeRef, &w2)...)
+		errs = append(errs, handleAtom(arhs, w.typeRef, w)...)
 		errs = append(errs, handleAtom(arhs, w.typeRef, w)...)
 	}
 

@@ -1098,6 +1098,66 @@ func TestMultipleAppliersNestedType(t *testing.T) {
 				),
 			},
 		},
+		"tombstone_list_item": {
+			Ops: []Operation{
+				Apply{
+					Manager: "apply-one",
+					Object: `
+						listOfLists:
+						- name: a
+						- name: b
+						  value:
+						  - c
+					`,
+					APIVersion: "v1",
+				},
+				Apply{
+					Manager: "apply-two",
+					Object: `
+						listOfLists:
+						- name: a
+						- name: b
+						  value:
+						  - d
+					`,
+					APIVersion: "v2",
+				},
+				Apply{
+					Manager: "apply-one",
+					Object: `
+						listOfLists:
+						- name: a
+						  x-kubernetes-apply-state: omit
+					`,
+					APIVersion: "v3",
+				},
+			},
+			Object: `
+				listOfLists:
+				- name: b
+				  value:
+				  - d
+			`,
+			APIVersion: "v1",
+			Managed: fieldpath.ManagedFields{
+				"apply-one": fieldpath.NewVersionedSet(
+					_NS(
+						_P("listOfLists", _KBF("name", "a")),
+					),
+					"v3",
+					false,
+				),
+				"apply-two": fieldpath.NewVersionedSet(
+					_NS(
+						_P("listOfLists", _KBF("name", "b")),
+						_P("listOfLists", _KBF("name", "b"), "name"),
+						_P("listOfLists", _KBF("name", "b"), "value", _V("d")),
+					),
+					"v2",
+					false,
+				),
+			},
+		},
 	}
 
 	for name, test := range tests {
@@ -1430,6 +1490,63 @@ func TestMultipleAppliersRealConversion(t *testing.T) {
 				),
 			},
 		},
+		"tombstone_map_item": {
+			Ops: []Operation{
+				Update{
+					Manager: "controller",
+					Object: `
+						mapOfMapsRecursive:
+						  a:
+						    b:
+						      c:
+					`,
+					APIVersion: "v1",
+				},
+				Apply{
+					Manager: "apply",
+					Object: `
+						mapOfMapsRecursive:
+						  aa:
+						    bb:
+						  cc:
+						    dd:
+					`,
+					APIVersion: "v2",
+				},
+				Apply{
+					Manager: "apply",
+					Object: `
+						mapOfMapsRecursive:
+						  aaa:
+						  ccc: { x-kubernetes-apply-state: omit }
+					`,
+					APIVersion: "v3",
+				},
+			},
+			Object: `
+				mapOfMapsRecursive:
+				  aaa:
+			`,
+			APIVersion: "v3",
+			Managed: fieldpath.ManagedFields{
+				"controller": fieldpath.NewVersionedSet(
+					_NS(
+						_P("mapOfMapsRecursive"),
+						_P("mapOfMapsRecursive", "a"),
+					),
+					"v1",
+					false,
+				),
+				"apply": fieldpath.NewVersionedSet(
+					_NS(
+						_P("mapOfMapsRecursive", "aaa"),
+						_P("mapOfMapsRecursive", "ccc"),
+					),
+					"v3",
+					false,
+				),
+			},
+		},
 	}
 
 	for name, test := range tests {
@@ -1496,6 +1613,132 @@ func testMultipleAppliersFieldRenameConversions(t *testing.T, v1, v2, v3 fieldpa
 						_P("struct", "name"),
 					),
 					v1,
+					true,
+				),
+			},
+		},
+	}
+
+	converter := renamingConverter{structMultiversionParser}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if err := test.TestWithConverter(structMultiversionParser, converter); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestMultipleAppliersTombstoneConversions(t *testing.T) {
+	versions := []fieldpath.APIVersion{"v1", "v2", "v3"}
+	for _, v1 := range versions {
+		for _, v2 := range versions {
+			for _, v3 := range versions {
+				t.Run(fmt.Sprintf("%s-%s-%s", v1, v2, v3), func(t *testing.T) {
+					testMultipleAppliersTombstoneConversions(t, v1, v2, v3)
+				})
+			}
+		}
+	}
+}
+
+func testMultipleAppliersTombstoneConversions(t *testing.T, v1, v2, v3 fieldpath.APIVersion) {
+	tests := map[string]TestCase{
+		"applier_tombstones_field": {
+			Ops: []Operation{
+				Apply{
+					Manager:    "applier",
+					APIVersion: v1,
+					Object: typed.YAMLObject(fmt.Sprintf(`
+						struct:
+						  name: a
+						  scalarField_%s: a
+					`, v1)),
+				},
+				Apply{
+					Manager:    "applier-two",
+					APIVersion: v2,
+					Object: typed.YAMLObject(fmt.Sprintf(`
+						struct:
+						  scalarField_%s: a
+					`, v2)),
+				},
+				Apply{
+					Manager:    "applier",
+					APIVersion: v3,
+					Object: typed.YAMLObject(fmt.Sprintf(`
+						struct:
+						  name: a
+						  scalarField_%s: { x-kubernetes-apply-state: omit }
+					`, v3)),
+				},
+			},
+			Object: typed.YAMLObject(`
+				struct:
+				  name: a
+			`),
+			APIVersion: v3,
+			Managed: fieldpath.ManagedFields{
+				"applier": fieldpath.NewVersionedSet(
+					_NS(
+						_P("struct", "name"),
+						_P("struct", fmt.Sprintf("scalarField_%s", v3)), // The applier owns the omitted field
+					),
+					v3,
+					true,
+				),
+			},
+		},
+		"appliers_share_tombstoned_field": {
+			Ops: []Operation{
+				Apply{
+					Manager:    "applier",
+					APIVersion: v1,
+					Object: typed.YAMLObject(fmt.Sprintf(`
+						struct:
+						  name: a
+						  scalarField_%s: a
+					`, v1)),
+				},
+				Apply{
+					Manager:    "applier",
+					APIVersion: v2,
+					Object: typed.YAMLObject(fmt.Sprintf(`
+						struct:
+						  name: a
+						  scalarField_%s: { x-kubernetes-apply-state: omit }
+					`, v2)),
+				},
+				Apply{
+					Manager:    "applier_two",
+					APIVersion: v3,
+					Object: typed.YAMLObject(fmt.Sprintf(`
+						struct:
+						  name: a
+						  scalarField_%s: { x-kubernetes-apply-state: omit }
+					`, v3)),
+				},
+			},
+			Object: typed.YAMLObject(`
+				struct:
+				  name: a
+			`),
+			APIVersion: v2,
+			Managed: fieldpath.ManagedFields{
+				"applier": fieldpath.NewVersionedSet(
+					_NS(
+						_P("struct", "name"),
+						_P("struct", fmt.Sprintf("scalarField_%s", v2)),
+					),
+					v2,
+					true,
+				),
+				"applier_two": fieldpath.NewVersionedSet(
+					_NS(
+						_P("struct", "name"),
+						_P("struct", fmt.Sprintf("scalarField_%s", v3)),
+					),
+					v3,
 					true,
 				),
 			},
